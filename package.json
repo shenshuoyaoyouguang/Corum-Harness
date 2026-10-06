@@ -11,6 +11,9 @@
   "scripts": {
     "build": "pnpm -r --filter './packages/**' run build",
     "typecheck": "pnpm -r --filter './packages/**' run typecheck",
+    "test": "pnpm -r --if-present --filter './packages/**' run test",
+    "guard": "bash scripts/verify-fork-drift.sh",
+    "ci": "pnpm typecheck && pnpm test && pnpm guard",
     "shell:dev": "pnpm --filter corum-desktop run start",
     "shell:smoke": "pnpm --filter corum-desktop run smoke",
     "pack": "pnpm --filter corum-desktop run pack",
