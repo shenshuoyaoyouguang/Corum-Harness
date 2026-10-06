@@ -142,7 +142,11 @@ describe('corumRunIntegrateVerify — 机制自己跑声明并取退出码', () 
 
   it('把被跑命令的失败输出带回（报告要能给人看）', () => {
     const { repo } = makeRepoWithWorktree()
-    const result = corumRunIntegrateVerify(repo, 'echo "boom: zzz.md is missing" >&2; exit 3')
+    // 声明交给**平台 shell** 解释（orchestration.ts：win32 → pwsh、POSIX → bash），而
+    // `>&2` 是 POSIX 重定向语法——pwsh 对它是 ParserError（本机实测 exit 1），故用两个
+    // shell 都成立的等价写法表达同一件事：往 **stderr** 写一行 + 以退出码 3 结束。
+    // 断言不放松：仍要求取回的是命令自己的 3（不是 shell 的通用失败码），并带回其输出。
+    const result = corumRunIntegrateVerify(repo, `node -e "console.error('boom: zzz.md is missing')"; exit 3`)
     expect(result.ok).toBe(false)
     expect(result.code).toBe(3)
     expect(result.output).toContain('boom: zzz.md is missing')
@@ -191,7 +195,10 @@ describe('corumIntegrationVerdict — 集成总判定 = git 实况 ∧ 声明式
     expect(verdict.integrated).toBe(true)
   })
 
-  it('未声明 verify → 只按 git 实况判（探测式检查不进机制门禁）', () => {
+  // 显式放宽等待上限（**不是**放宽断言）：本用例要连跑 3 次「真实 git 仓库 + worktree +
+  // merge」判定，win32 上每次 git 派发约 0.5–1s，满载并行时整例会越过 vitest 默认的 5s
+  // 而被判超时（本机实测 5112ms）。断言逐条不变。
+  it('未声明 verify → 只按 git 实况判（探测式检查不进机制门禁）', { timeout: 30_000 }, () => {
     const { repo, worktree, branch, entry } = makeRepoWithWorktree()
     commitInWorktree(worktree, 'u1.md')
     mergeWithCommit(repo, branch)

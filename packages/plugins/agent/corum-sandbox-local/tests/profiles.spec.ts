@@ -13,6 +13,16 @@ function git(cwd: string, args: string[]): void {
   execFileSync('git', args, { cwd, stdio: 'pipe' })
 }
 
+/**
+ * SBPL string-literal escaping (the builder's `sbplString`): `\` and `"` are
+ * backslash-escaped, so a Windows path is never spelled verbatim inside a
+ * profile — the escaping is the identity for POSIX paths, which is why the
+ * expectations below read unchanged on macOS.
+ */
+function sbplString(path: string): string {
+  return path.replaceAll('\\', String.raw`\\`).replaceAll('"', String.raw`\"`)
+}
+
 /** 建一个临时仓库 + 一条 worktree，返回两者的规范路径。 */
 function repoWithWorktree(name: string): { repo: string; worktree: string; gitdir: string; common: string } {
   const repo = join(scratch, name)
@@ -98,16 +108,16 @@ describe('平台 profile 的 git 数据授权（fork 增量落点）', () => {
   it('Seatbelt：SBPL 含 workspace 根与 git 数据目录，且不含 hooks/config/整个 .git', () => {
     const { worktree, gitdir, common } = repoWithWorktree('repo-seatbelt')
     const profile = seatbeltProfileArgs({ mode: 'workspace-write', workspaceRoot: worktree })[1]
-    expect(profile).toContain(`(subpath "${worktree}")`)
-    expect(profile).toContain(`(subpath "${gitdir}")`)
-    expect(profile).toContain(`(subpath "${join(common, 'objects')}")`)
-    expect(profile).toContain(`(subpath "${join(common, 'refs')}")`)
-    expect(profile).toContain(`(subpath "${join(common, 'logs')}")`)
-    expect(profile).not.toContain(`(subpath "${join(common, 'hooks')}")`)
-    expect(profile).not.toContain(`(subpath "${join(common, 'config')}")`)
-    expect(profile).not.toContain(`(subpath "${common}")`)
+    expect(profile).toContain(`(subpath "${sbplString(worktree)}")`)
+    expect(profile).toContain(`(subpath "${sbplString(gitdir)}")`)
+    expect(profile).toContain(`(subpath "${sbplString(join(common, 'objects'))}")`)
+    expect(profile).toContain(`(subpath "${sbplString(join(common, 'refs'))}")`)
+    expect(profile).toContain(`(subpath "${sbplString(join(common, 'logs'))}")`)
+    expect(profile).not.toContain(`(subpath "${sbplString(join(common, 'hooks'))}")`)
+    expect(profile).not.toContain(`(subpath "${sbplString(join(common, 'config'))}")`)
+    expect(profile).not.toContain(`(subpath "${sbplString(common)}")`)
     // packed-refs 是引用数据（与 refs/ 同类），为消除 git commit 的 lock 报错而授权。
-    expect(profile).toContain(`(subpath "${join(common, 'packed-refs')}")`)
+    expect(profile).toContain(`(subpath "${sbplString(join(common, 'packed-refs'))}")`)
     // 写仍然被整体拒绝（(deny file-write*) 在授权之前），只是多几个白名单根。
     expect(profile).toContain('(deny file-write*)')
   })
@@ -115,7 +125,7 @@ describe('平台 profile 的 git 数据授权（fork 增量落点）', () => {
   it('Seatbelt：read-only 不含任何 git 根（探针路径也不额外授权）', () => {
     const { worktree, gitdir } = repoWithWorktree('repo-seatbelt-ro')
     const profile = seatbeltProfileArgs({ mode: 'read-only', workspaceRoot: worktree })[1]
-    expect(profile).not.toContain(`(subpath "${gitdir}")`)
+    expect(profile).not.toContain(`(subpath "${sbplString(gitdir)}")`)
   })
 
   it('bwrap / Landlock：git 数据目录进入 bind / readWrite 面，整个 .git 不进', () => {

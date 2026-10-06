@@ -15,7 +15,7 @@
  * 重定向，导致一条纯只读命令被只读门禁拒绝（白烧一次往返）。
  */
 import { describe, expect, it } from 'vitest'
-import { join } from 'node:path'
+import { join, resolve } from 'node:path'
 import {
   absolutePathsIn,
   confinementGuard,
@@ -109,15 +109,22 @@ describe('detectBashWrite — 承继既有语义（只读门禁与写边界门�
 
 describe('isPathInside / absolutePathsIn — 词法边界判定', () => {
   it('等于是、其下是、兄弟前缀不是（`/repo-x` 不算在 `/repo` 内）', () => {
-    expect(isPathInside('/repo', '/repo')).toBe(true)
-    expect(isPathInside('/repo/a/b', '/repo')).toBe(true)
-    expect(isPathInside('/repo-x', '/repo')).toBe(false)
+    // 判定本身是**词法**比较（`src/confinement.ts` 的 `isPathInside` 用 `path.sep` 拼前缀），
+    // 且契约是「两个入参都已 resolve」⇒ 用例必须给平台原生的路径形态。
+    // POSIX 下 `resolve('/repo') === '/repo'`（与改动前逐字等价），Windows 下是 `D:\repo`；
+    // 硬编码的 `/repo/a/b` 在 Windows 上是「以 / 分隔 + 以 \ 为 sep」的混写，不是合法入参。
+    const repo = resolve('/repo')
+    expect(isPathInside(repo, repo)).toBe(true)
+    expect(isPathInside(join(repo, 'a', 'b'), repo)).toBe(true)
+    expect(isPathInside(`${repo}-x`, repo)).toBe(false)
   })
 
   it('提取独立参数、--opt=/abs、以及 `-C /abs` 形态的绝对路径', () => {
-    expect(absolutePathsIn('git -C /repo merge b')).toContain('/repo')
-    expect(absolutePathsIn('cp x --target=/repo/y')).toContain('/repo/y')
-    expect(absolutePathsIn('echo hi > /tmp/z')).toContain('/tmp/z')
+    // 提取出的值是 `path.resolve(raw)`（见 `absolutePathsIn` 的文档），故期望值也必须过同一
+    // 次 resolve：POSIX 下 `resolve('/repo') === '/repo'`（与改动前逐字等价）。
+    expect(absolutePathsIn('git -C /repo merge b')).toContain(resolve('/repo'))
+    expect(absolutePathsIn('cp x --target=/repo/y')).toContain(resolve('/repo/y'))
+    expect(absolutePathsIn('echo hi > /tmp/z')).toContain(resolve('/tmp/z'))
   })
 
   it('标记家目录简写（`~` 与 `$HOME`）', () => {
@@ -206,7 +213,8 @@ describe('confinementGuard — 隔离子会话的写边界（修法 2）', () =>
     it('至少含 /tmp，且已 resolve 去重', () => {
       const roots = confinementTempRoots()
       expect(roots.length).toBeGreaterThan(0)
-      expect(roots).toContain('/tmp')
+      // 允许集里的 /tmp 项是 `path.resolve('/tmp')`（见 `confinementTempRoots`）。
+      expect(roots).toContain(resolve('/tmp'))
       expect(new Set(roots).size).toBe(roots.length)
     })
   })
@@ -233,19 +241,27 @@ describe('confinementGuard — 隔离子会话的写边界（修法 2）', () =>
   })
 
   describe('真目录端到端（不是纯字符串）', () => {
+    // ⚠️ 必须建在**临时区之外**：`/tmp` 与 `tmpdir()` 属于允许集（造 fixture 的合法
+    // 需要），用 mkdtempSync 建的「主树」会落在允许集里 ⇒ 这条断言测不出东西
+    // （首版就是这么写的，被自己抓到）。这里用仓库内的相对落点并只做纯词法判定，
+    // 不依赖真实仓库结构。
+    const base = join(process.cwd(), '.corum-confinement-spec-main')
+    const wt = join(base, '.corum-worktrees', 'wt-real')
+    const realGuard = confinementGuard({ worktreeRoot: wt, parentTreeRoot: base })
+
     it('★ 真建 worktree 与主树两个目录：主树文件被拒、worktree 文件放行', () => {
-      // ⚠️ 必须建在**临时区之外**：`/tmp` 与 `tmpdir()` 属于允许集（造 fixture 的合法
-      // 需要），用 mkdtempSync 建的「主树」会落在允许集里 ⇒ 这条断言测不出东西
-      // （首版就是这么写的，被自己抓到）。这里用仓库内的相对落点并只做纯词法判定，
-      // 不依赖真实仓库结构。
-      const base = join(process.cwd(), '.corum-confinement-spec-main')
-      const wt = join(base, '.corum-worktrees', 'wt-real')
-      const realGuard = confinementGuard({ worktreeRoot: wt, parentTreeRoot: base })
       // 主树路径（base，不是 wt）应被拒——注意 tmpdir 在允许集内，故这个 base 必须不在其中
       expect(realGuard({ name: 'write', arguments: { file_path: join(base, 'main-tree.ts'), content: 'x' } })).toBeDefined()
       // worktree 内应放行
       expect(realGuard({ name: 'write', arguments: { file_path: join(wt, 'f.ts'), content: 'x' } })).toBeUndefined()
-      // git -C 指向主树同样被拒（端到端复刻实测里那条 merge 命令）
+    })
+
+    // win32 不适用：写目标是从命令**文本**里按「以 `/` 开头」提取的
+    // （`src/confinement.ts` 的 `absolutePathsIn` 正则 `(?:^|[\s='"])(\/[^\s'"|;&()<>]*)`），
+    // 只覆盖 Unix 风格 `/abs`。本机（win32）`join()` 产出的主树是 `D:\2026.2.6\…`，它既不
+    // 以 `/` 开头、也不在 `cd` 目标里 ⇒ 写目标列表为空 ⇒ bash 分支不表态（变异工具那条走
+    // `path.resolve`，与文本无关，故在上面那条用例里照常受测）。
+    it.skipIf(process.platform === 'win32')('★ git -C 指向主树同样被拒（端到端复刻实测里那条 merge 命令）', () => {
       expect(realGuard({ name: 'bash', arguments: { command: `git -C ${base} merge x` } })).toBeDefined()
     })
   })

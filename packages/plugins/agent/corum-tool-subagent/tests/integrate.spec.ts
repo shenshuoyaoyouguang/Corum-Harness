@@ -576,7 +576,10 @@ describe('corumReapOrphanWorktrees — 台账之外的孤儿 worktree 清扫（2
     // .corum-worktrees 下那一个」——序号与后缀足够，不锁 tmpdir 前缀。
     const listed = corumListIsolatedWorktrees(repo)
     expect(listed.length).toBe(1)
-    expect(listed[0].path.endsWith(join('.corum-worktrees', 'wt-orphan5'))).toBe(true)
+    // git 的 `worktree list --porcelain` 在 win32 上以 `/` 报路径（本机实测），而 join() 给的是
+    // `\` ⇒ 两侧都归一成分隔符无关形态再比；断言仍是「本仓 .corum-worktrees 下那一个」，不放松。
+    const separatorFree = (p: string): string => p.replaceAll('\\', '/')
+    expect(separatorFree(listed[0].path).endsWith(separatorFree(join('.corum-worktrees', 'wt-orphan5')))).toBe(true)
     expect(corumReapOrphanWorktrees(repo)).toBe(1)
     expect(existsSync(outside)).toBe(true)
   })
