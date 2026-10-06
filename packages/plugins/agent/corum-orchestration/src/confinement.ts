@@ -452,10 +452,9 @@ export function detectBashWrite(command: string): string | undefined {
  * 目标路径是否落在某个根之内（词法判定，根与目标都已 resolve）。
  *
  * 与官方 `dsh-fs-sandbox` 的 `isPathUnder` 相比少了两件事：不做 realpath/设备号
- * 等价判定，也不处理 Windows 大小写别名——**有意如此**。本函数服务的是
- * {@link confinementGuard}（纵深防御的一层启发式门禁），真正的强边界是
- * `workspace-write` 沙箱本身（它做完整判定）。门禁若在这里做重量级 syscall，
- * 只会让热路径变慢而不增加保证。
+ * 等价判定。win32 分支做大小写不敏感比较（NTFS 大小写不敏感），POSIX 分支
+ * 大小写敏感。本函数服务的是 {@link confinementGuard}（纵深防御的一层启发式
+ * 门禁），真正的强边界是 `workspace-write` 沙箱本身（它做完整判定）。
  *
  * @param target - 已 resolve 的目标绝对路径。
  * @param root - 已 resolve 的根绝对路径。

@@ -294,8 +294,8 @@ const SESSION_DIR_KEY_HASH_LEN = 8
 /**
  * 工作目录键 → 会话目录名中段（不含 `--` 包围）。
  *
- * 按平台分派：win32 保留盘符字母（`D:` → `D-`）后双分隔符换 `-`；POSIX 去前导 `/` 后
- * `/` 换 `-`。产出不含 `:` / `\` / `/`，保证 `mkdir` 在任一平台均可建。
+ * 按平台分派：win32 转义字面 `-` → `-h`，盘符 `:` 与路径分隔符 → `-s`；POSIX 去前导
+ * `/` 后 `/` 换 `-`。产出不含 `:` / `\` / `/`，保证 `mkdir` 在任一平台均可建。
  *
  * 过长产出（`> {@link SESSION_DIR_KEY_MAX}`）会被稳定截断为「前缀 + sha1 后缀」：
  * 同一 key 恒截到同一结果（幂等），不同 key 借 hash 后缀保留区分度。
@@ -303,12 +303,11 @@ const SESSION_DIR_KEY_HASH_LEN = 8
 function encodeSessionDirKey(key: string): string {
   let encoded: string
   if (process.platform === 'win32') {
-    // 保留盘符字母（`D:\work` → `D-s\work`），再把 `\` 与 `/` 一并换 `-s`。
     // 不剥盘符：`C:\work\foo` 与 `D:\work\foo` 须编码到不同目录名，否则不同盘的
     // 同名工作区会共享会话存储（P1）。盘符大小写已由 canonicalWorkspaceKey 归一。
     // 转义字面 `-` → `-h`，路径分隔符/盘符 `:` → `-s`：确保字面 hyphen 与路径
-    // 分隔符可区分（`C:\a-b` → `C-sa-hb` ≠ `C:\a\b` → `C-sa-sb`），`-h` 与 `-s`
-    // 的第二字符不同（h vs s），解析无歧义。
+    // 分隔符可区分（`C:\a-b` → `C-s-sa-hb` ≠ `C:\a\b` → `C-s-sa-sb`），`-h` 与
+    // `-s` 的第二字符不同（h vs s），解析无歧义。
     encoded = key.replace(/-/g, '-h').replace(/^([A-Za-z]):/, '$1-s').replace(/[\\/]/g, '-s')
   } else {
     encoded = key.replace(/^\//, '').replace(/[/]/g, '-')

@@ -230,8 +230,8 @@ export function apply(ctx: Context): void {
     /** 绝对路径 → corumFs 相对路径（去掉 lastRoot 前缀，保证 / 开头）。 */
     const toRelativePath = (absolute: string): string | null => {
       if (lastRoot === null || lastRoot === '') return null
-      // lastRoot 可能是 /a/b 或 /a/b/（统一去掉尾部 /）
-      const root = lastRoot.endsWith('/') ? lastRoot.slice(0, -1) : lastRoot
+      // lastRoot 可能是 /a/b、/a/b/ 或 D:\（统一去掉尾部分隔符 / 和 \）
+      const root = lastRoot.replace(/[\\/]+$/, '')
       // win32 路径形态判定（不读 process.platform：client bundle 无 Node types，
       // 以路径形态为信号——盘符或 UNC 开头）。client bundle 不依赖 host 插件包
       //（@corum/corum-agent/win32-path-helpers），故内联正则——同源口径。
