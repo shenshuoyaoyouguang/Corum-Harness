@@ -18,6 +18,10 @@ jobs:
     runs-on: macos-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          # fold-equivalence.spec.ts 依赖 git 历史（在历史提交里找回原始 fold 原文）；
+          # 默认 shallow clone 会让该判据 fail-loud
+          fetch-depth: 0
 
       # 版本取自 package.json 的 packageManager 字段（pnpm@11.7.0）
       - uses: pnpm/action-setup@v4
