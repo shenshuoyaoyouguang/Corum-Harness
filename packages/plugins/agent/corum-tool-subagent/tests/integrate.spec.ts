@@ -14,9 +14,9 @@
  * 全部用真实临时 git 仓库驱动（无 mock），与 execute 层同一 git 命令面。
  */
 import { execFileSync } from 'node:child_process'
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
-import { join } from 'node:path'
+import { join, resolve, sep } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import {
   corumBranchIntegrated,
@@ -539,6 +539,51 @@ describe('corumReconcileIntegrated — 台账认账「外包出去的合并」�
 })
 
 describe('corumReapOrphanWorktrees — 台账之外的孤儿 worktree 清扫（2026-09-12 实测 10 个纯空目录）', () => {
+  it('DIAG: win32 worktree listing diagnostic', () => {
+    const { repo, worktree } = makeRepoWithWorktree('wt-diag')
+    // 1. git worktree list --porcelain raw output
+    let out: string
+    try {
+      out = execFileSync('git', ['worktree', 'list', '--porcelain'], { cwd: repo, encoding: 'utf8', stdio: 'pipe' })
+    } catch (e) {
+      console.error('DIAG git failed:', (e as Error)?.message)
+      expect(true).toBe(true)
+      return
+    }
+    console.error('DIAG porcelain:', JSON.stringify(out))
+    // 2. root path
+    const root = `${realpathSync(resolve(repo, '.corum-worktrees'))}${sep}`
+    console.error('DIAG root:', JSON.stringify(root))
+    // 3. parsed items
+    const items: { path: string; branch: string }[] = []
+    let current: string | undefined
+    for (const raw of out.split('\n')) {
+      const line = raw.trimEnd()
+      if (line.startsWith('worktree ')) { current = line.slice(9).trim(); continue }
+      if (line.startsWith('branch ') && current !== undefined) {
+        items.push({ path: current, branch: line.slice(7).trim() })
+        current = undefined
+      }
+    }
+    console.error('DIAG items count:', items.length)
+    for (const item of items) {
+      try {
+        const rp = realpathSync(item.path)
+        const norm = (p: string) => p.replaceAll('\\', '/').toLowerCase()
+        console.error('DIAG item.path:', JSON.stringify(item.path))
+        console.error('DIAG realpath:', JSON.stringify(rp))
+        console.error('DIAG startsWith(root):', rp.startsWith(root))
+        console.error('DIAG norm startsWith:', norm(rp).startsWith(norm(root)))
+      } catch (e) {
+        console.error('DIAG realpath FAILED for', item.path, ':', (e as Error)?.message)
+      }
+    }
+    // 4. corumListIsolatedWorktrees result
+    const listed = corumListIsolatedWorktrees(repo)
+    console.error('DIAG listed count:', listed.length)
+    expect(true).toBe(true)
+  })
+
   it('干净 + 分支对 HEAD 零新增 → 目录与分支一起回收', () => {
     const { repo, worktree, branch } = makeRepoWithWorktree('wt-orphan1')
     expect(corumReapOrphanWorktrees(repo)).toBe(1)
