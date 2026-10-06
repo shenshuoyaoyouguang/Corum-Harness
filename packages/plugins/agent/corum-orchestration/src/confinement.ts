@@ -462,6 +462,14 @@ export function detectBashWrite(command: string): string | undefined {
  * @returns 目标等于根或位于其下时为 true。
  */
 export function isPathInside(target: string, root: string): boolean {
+  if (process.platform === 'win32') {
+    // win32 文件系统大小写不敏感：`D:\MAIN\x` 须识别为 inside `D:\main`，
+    // 否则混合大小写路径的越界写漏判（confinementGuard 不拒）。
+    const lt = target.toLowerCase(), lr = root.toLowerCase()
+    if (lt === lr) return true
+    const prefix = lr.endsWith(path.sep) ? lr : lr + path.sep
+    return lt.startsWith(prefix)
+  }
   if (target === root) return true
   const prefix = root.endsWith(path.sep) ? root : root + path.sep
   return target.startsWith(prefix)

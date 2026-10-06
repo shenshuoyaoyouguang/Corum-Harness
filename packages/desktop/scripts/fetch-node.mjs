@@ -140,27 +140,6 @@ async function extractZip(zipPath, destDir) {
   }
 }
 
-/**
- * 把 win32 Node zip 解压出的可执行文件（node.exe / npm.cmd / npx.cmd …）从归档根移入 bin/。
- *
- * win32 归档把 node.exe 放在 `node-v{ver}-win-{arch}/` 根目录（无 bin/ 子目录），
- * 但 launcher（main.ts hostNode）期望 `Resources/node/bin/node[.exe]`（与 darwin 布局对齐）。
- * 解压重命名为 build/node/ 后调用本函数把 .exe/.cmd 移入 build/node/bin/。
- * @param {string} nodeDir - 解压重命名后的 node 运行时目录（build/node）
- */
-async function relocateWin32Binaries(nodeDir) {
-  const binDir = join(nodeDir, 'bin')
-  await mkdir(binDir, { recursive: true })
-  for (const entry of await readdir(nodeDir)) {
-    if (entry === 'bin') continue
-    // 移入 bin/ 的：仅 node.exe —— hostNode() 期望 `Resources/node/bin/node.exe`。
-    // .cmd 启动器用 `%~dp0` 解析依赖路径（相对自身目录），移入 bin/ 后找不到根目录的
-    // node_modules/npm/，导致 npm/npx 失效；.cmd/.ps1 留在归档根，相对引用仍有效（P2）。
-    if (/\.exe$/i.test(entry)) {
-      await rename(join(nodeDir, entry), join(binDir, entry))
-    }
-  }
-}
 
 async function main() {
   const args = parseArgs(process.argv.slice(2))
@@ -209,10 +188,10 @@ async function main() {
     // darwin / POSIX：mv 重命名
     await run('rename node dir', 'mv', [extractedDir, NODE_DIR])
   } else {
-    // win32：fs.rename 重命名（不依赖外部 mv），再把 node.exe 等移入 bin/
-    // （win32 zip 把可执行文件放在归档根，launcher 期望 bin/node 布局，与 darwin 对齐）
+    // win32：fs.rename 重命名（不依赖外部 mv）。win32 zip 把 node.exe 放在归档根，
+    // .cmd 启动器（npm.cmd 等）用 `%~dp0\node.exe` 解析 bundled node —— 保持归档原样
+    // 不移动，hostNode() 直接从 `Resources/node/node.exe` 找（见 main.ts hostNode）。
     await rename(extractedDir, NODE_DIR)
-    await relocateWin32Binaries(NODE_DIR)
   }
   console.log('[fetch-node] node runtime staged at', NODE_DIR)
 }

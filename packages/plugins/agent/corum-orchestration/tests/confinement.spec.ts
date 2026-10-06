@@ -457,6 +457,14 @@ describe('★ 两轴口径（2026-09-27 用户裁定）：主仓硬线 vs 仓外
 describe('★ win32 路径提取（P0-2，安全面）', () => {
   const isWin32 = process.platform === 'win32'
 
+  it.skipIf(!isWin32)('isPathInside 大小写不敏感 + 目录边界（D:\\MAIN\\x 在 D:\\main 内）', () => {
+    // win32 文件系统大小写不敏感：混合大小写路径须识别为 inside。
+    expect(isPathInside('D:\\MAIN\\x', 'D:\\main')).toBe(true)
+    expect(isPathInside('D:\\main\\X', 'D:\\MAIN')).toBe(true)
+    // 兄弟前缀仍不匹配（目录边界：`D:\main-sibling` 不是 `D:\main` 的子目录）。
+    expect(isPathInside('D:\\main-sibling\\x', 'D:\\main')).toBe(false)
+  })
+
   describe('absolutePathsIn — win32 盘符/UNC 路径提取', () => {
     it.skipIf(!isWin32)('提取盘符路径 D:\\越界\\path（反斜杠）', () => {
       expect(absolutePathsIn('rm -rf D:\\outside\\path')).toContain(resolve('D:\\outside\\path'))

@@ -303,10 +303,13 @@ const SESSION_DIR_KEY_HASH_LEN = 8
 function encodeSessionDirKey(key: string): string {
   let encoded: string
   if (process.platform === 'win32') {
-    // 保留盘符字母（`D:\work` → `D-\work`），再把 `\` 与 `/` 一并换 `-`。
+    // 保留盘符字母（`D:\work` → `D-s\work`），再把 `\` 与 `/` 一并换 `-s`。
     // 不剥盘符：`C:\work\foo` 与 `D:\work\foo` 须编码到不同目录名，否则不同盘的
     // 同名工作区会共享会话存储（P1）。盘符大小写已由 canonicalWorkspaceKey 归一。
-    encoded = key.replace(/^([A-Za-z]):/, '$1-').replace(/[\\/]/g, '-')
+    // 转义字面 `-` → `-h`，路径分隔符/盘符 `:` → `-s`：确保字面 hyphen 与路径
+    // 分隔符可区分（`C:\a-b` → `C-sa-hb` ≠ `C:\a\b` → `C-sa-sb`），`-h` 与 `-s`
+    // 的第二字符不同（h vs s），解析无歧义。
+    encoded = key.replace(/-/g, '-h').replace(/^([A-Za-z]):/, '$1-s').replace(/[\\/]/g, '-s')
   } else {
     encoded = key.replace(/^\//, '').replace(/[/]/g, '-')
   }

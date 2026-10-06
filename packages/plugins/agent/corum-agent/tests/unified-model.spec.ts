@@ -494,4 +494,11 @@ describe('会话目录编码', () => {
       expect(encodeCwdForSessionsDir(cwd)).toBe(encodeCwdForSessionsDir(cwd))
     }
   })
+
+  it.skipIf(!windowsHost)('win32 字面 hyphen 与路径分隔符不碰撞', () => {
+    // C:\work\a-b（字面 hyphen）与 C:\work\a\b（路径分隔符）须编码到不同目录名，
+    // 否则不同工作区路径共享会话存储（P1）。
+    expect(encodeCwdForSessionsDir('C:\\work\\a-b'))
+      .not.toBe(encodeCwdForSessionsDir('C:\\work\\a\\b'))
+  })
 })

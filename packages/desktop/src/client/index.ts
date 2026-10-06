@@ -232,17 +232,25 @@ export function apply(ctx: Context): void {
       if (lastRoot === null || lastRoot === '') return null
       // lastRoot 可能是 /a/b 或 /a/b/（统一去掉尾部 /）
       const root = lastRoot.endsWith('/') ? lastRoot.slice(0, -1) : lastRoot
-      if (!absolute.startsWith(root)) return null
+      // win32 路径形态判定（不读 process.platform：client bundle 无 Node types，
+      // 以路径形态为信号——盘符或 UNC 开头）。client bundle 不依赖 host 插件包
+      //（@corum/corum-agent/win32-path-helpers），故内联正则——同源口径。
+      const isWin32Root = /^[A-Za-z]:[\\/]/.test(root) || /^[/\\]{2}/.test(root)
+      if (isWin32Root) {
+        // win32 文件系统大小写不敏感，须 case-insensitive 比较 + 目录边界
+        // （`D:\main-sibling` 不应匹配 `D:\main`；`D:\Main` 应匹配 `D:\main`）。
+        const la = absolute.toLowerCase(), lr = root.toLowerCase()
+        if (la !== lr && !la.startsWith(lr + '\\') && !la.startsWith(lr + '/')) return null
+      } else {
+        if (!absolute.startsWith(root)) return null
+      }
       let rel = absolute.slice(root.length)
       if (rel === '') rel = '/'
-      // win32: 盘符路径 slice root 后 rel 含 \ 分隔符（如 \dir\file.ts），
-      // 归一为 /（corumFs 约定以 / 为分隔符与相对路径前导）。**必须归一所有
-      // 嵌套 \**，否则 \dir\file.ts 只换前导得 /dir\file.ts，编辑器显示为单个
-      // 路径段，不匹配 Explorer 的 /dir/file.ts。若 rel 仍以盘符/UNC 开头
-      // （root 未正确剥离的防御），不补 / 前导。不读 process.platform：以路径
-      // 形态为信号，POSIX 路径不含 \，不会误判。client bundle 不依赖 host 插件
-      // 包（@corum/corum-agent/win32-path-helpers），故内联正则——同源口径。
-      rel = rel.replace(/\\/g, '/')
+      // win32: 盘符路径 slice root 后 rel 含 \ 分隔符，归一为 /（corumFs 约定以 / 为分隔符）。
+      // POSIX: 文件名可含字面 \（非分隔符），不归一——仅在 win32 root 时做 backslash 归一。
+      if (isWin32Root) {
+        rel = rel.replace(/\\/g, '/')
+      }
       if (!rel.startsWith('/') && !/^[A-Za-z]:[\\/]/.test(rel) && !/^[/\\]{2}/.test(rel)) rel = '/' + rel
       return rel
     }

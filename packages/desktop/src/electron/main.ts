@@ -46,9 +46,10 @@ function isPackaged(): boolean {
  */
 function hostNode(): string {
   if (isPackaged()) {
-    // win32: node.exe；POSIX: node（与 fetch-node.mjs 物化的 bin/ 布局对齐）
-    const nodeBin = process.platform === 'win32' ? 'node.exe' : 'node'
-    return join(process.resourcesPath, 'node', 'bin', nodeBin)
+    // win32: node.exe 在归档根（Resources/node/node.exe）—— .cmd 启动器用 `%~dp0\node.exe`
+    // 解析 bundled node，不移动以保持相对引用有效。POSIX: bin/node（tarball 天然 bin/ 布局）。
+    if (process.platform === 'win32') return join(process.resourcesPath, 'node', 'node.exe')
+    return join(process.resourcesPath, 'node', 'bin', 'node')
   }
   return process.env.CORUM_HOST_NODE ?? 'node'
 }
