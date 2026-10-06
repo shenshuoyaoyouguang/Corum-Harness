@@ -32,6 +32,11 @@
 > 而基座已于 **2026-09-29 升至 `0.1.5-rc.3`**（全文 `0.1.5` 出现 **0** 次——§9 之后未再登记）。
 > §1–§4 的逐文件对照与 §5 runbook 的「第 0 步 · 前置对齐」在用于 0.1.5 升级前需重新对账。
 >
+> ✅ **字节一致面已对齐 0.1.5-rc.3（2026-10-06 CI 实测，commit `968d9fa`）**：`scripts/verify-fork-drift.sh`
+> 以 `DSH_BASELINE_TAG=dsh-v0.1.5-rc.3` 跑全量字节比对通过（`guard-output.txt`，21 项预期 skip：闭源仓事件 /
+> retired·test 插件 / corum-only conductor preset / 未装 cdp-verify 技能）。即 fork 的**字节一致子集**已与
+> 0.1.5-rc.3 对齐；但 §1–§4 的逐文件**分类台账**（相同/改名/实质/新增/删除计数）仍停 0.1.3-alpha.1，重新生成前勿直接引用。
+>
 > ⚠️ **路径分三类，读时按类理解（2026-10-06 核实）**：
 > - **本仓路径**（`packages/**`、`scripts/**`、根 `cordis.patch.yml` 等）——存在，可直接读。
 > - **官方对照检出**（`/Users/kukucai/dsh/**`，以及裸的 `packages/api/*` / `packages/client/*`）——只存在于上游

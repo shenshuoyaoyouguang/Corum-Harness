@@ -106,9 +106,11 @@ jobs:
   # 被整个跳过（verify-fork-drift.sh 头部：无检出时字节断言 skip）。本 job 拉官方基线
   # 检出再跑全量 guard。仅 main push + 手动触发跑（PR 走 verify job 的本机断言即可）。
   #
-  # 初始各步 continue-on-error=true：先看 drift 面（台账基线 0.1.3-alpha.1 vs 实装
-  # 0.1.5-rc.3，字节 diff 可能红——这正是要看见的信号）。triage 后逐项修，再删
-  # continue-on-error 让它真正守 main。
+  # 968d9fa 实测：fork 与 0.1.5-rc.3 字节对齐、guard 全过（21 项预期 skip：闭源仓事件 /
+  # retired 插件 / test 插件 / corum-only conductor preset / 未装 cdp-verify 技能）。
+  # clone 步保留 continue-on-error（网络/tag 问题不阻断），guard 步已转阻断——
+  # 今后引入字节 drift 会在 main push 失败。台账 docs/fork-delta.md 基线标注仍停
+  # 0.1.3-alpha.1（文档债；字节一致面已由本 job 守住，详见 docs/fork-delta.md 文首 ✅ 标注）。
   fork-drift-byte:
     if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
     name: fork-drift byte guard
@@ -128,7 +130,8 @@ jobs:
 
       - name: Fork-drift byte guard (full)
         if: steps.baseline.outcome == 'success'
-        continue-on-error: true
+        # 968d9fa 实测通过 → 删 continue-on-error，让它真正守 main。
+        # clone 失败时本步被 if 跳过、不会误红；clone 成功后 guard 失败即阻断 main。
         env:
           DSH_CHECKOUT: /tmp/dsh
           DSH_BASELINE_TAG: ${{ env.DSH_BASELINE_TAG }}
