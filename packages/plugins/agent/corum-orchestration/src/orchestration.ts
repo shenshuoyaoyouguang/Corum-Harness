@@ -733,6 +733,12 @@ export function corumBranchAddsCommits(cwd: string, branch: string): boolean {
  */
 export function corumListIsolatedWorktrees(cwd: string): { path: string; branch: string }[] {
   const root = `${corumRealPath(path.resolve(cwd, '.corum-worktrees'))}${path.sep}`
+  // win32: git worktree list --porcelain 以 `/` 报路径，而 path.resolve 用 `\`。
+  // realpathSync 通常归一到 `\`，但失败时 corumRealPath 回退原路径（可能带 `/`）。
+  // 统一到 `/` + 小写化（win32 路径大小写不敏感）再做 startsWith。
+  const isWin32 = process.platform === 'win32'
+  const norm = (p: string): string => isWin32 ? p.replaceAll('\\', '/').toLowerCase() : p
+  const rootNorm = norm(root)
   try {
     const out = execFileSync('git', ['worktree', 'list', '--porcelain'], { cwd, encoding: 'utf8', stdio: 'pipe' })
     const items: { path: string; branch: string }[] = []
@@ -746,7 +752,7 @@ export function corumListIsolatedWorktrees(cwd: string): { path: string; branch:
         current = undefined
       }
     }
-    return items.filter(item => corumRealPath(item.path).startsWith(root))
+    return items.filter(item => norm(corumRealPath(item.path)).startsWith(rootNorm))
   } catch {
     return []
   }
@@ -769,11 +775,13 @@ export function corumListIsolatedWorktrees(cwd: string): { path: string; branch:
  */
 export function corumReapOrphanWorktrees(cwd: string, keep: ReadonlySet<string> = new Set()): number {
   // keep 集合与 git 报的路径都可能带/不带符号链接解析（macOS tmpdir /var ↔ /private/var）
-  // → 两边统一成 realpath 再比。
-  const keepReal = new Set([...keep].map(corumRealPath))
+  // → 两边统一成 realpath 再比。win32 还需归一分隔符 + 小写化（见 corumListIsolatedWorktrees）。
+  const isWin32 = process.platform === 'win32'
+  const norm = (p: string): string => isWin32 ? p.replaceAll('\\', '/').toLowerCase() : p
+  const keepReal = new Set([...keep].map(p => norm(corumRealPath(p))))
   let reaped = 0
   for (const item of corumListIsolatedWorktrees(cwd)) {
-    if (keepReal.has(corumRealPath(item.path))) continue
+    if (keepReal.has(norm(corumRealPath(item.path)))) continue
     if (corumWorktreeHasUncommitted(item.path)) continue
     if (corumBranchAddsCommits(cwd, item.branch)) continue
     if (corumCleanupWorktree(cwd, item, { force: false })) reaped += 1
