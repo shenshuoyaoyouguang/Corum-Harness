@@ -25,6 +25,7 @@ export default defineConfig(() => [
       'lib/types/contract/index.js',
       'lib/types/runtime-state.js',
       'lib/types/lane-support.js',
+      'lib/types/win32-path-helpers.js',
     ],
     outDir: 'lib',
     format: ['esm'],

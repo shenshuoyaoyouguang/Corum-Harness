@@ -539,6 +539,7 @@ describe('corumReconcileIntegrated — 台账认账「外包出去的合并」�
 })
 
 describe('corumReapOrphanWorktrees — 台账之外的孤儿 worktree 清扫（2026-09-12 实测 10 个纯空目录）', () => {
+
   it('干净 + 分支对 HEAD 零新增 → 目录与分支一起回收', () => {
     const { repo, worktree, branch } = makeRepoWithWorktree('wt-orphan1')
     expect(corumReapOrphanWorktrees(repo)).toBe(1)

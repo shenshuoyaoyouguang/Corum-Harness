@@ -1,5 +1,11 @@
 /**
- * corum-desktop macOS 打包脚本（阶段 1：物化宿主运行时闭包）。
+ * corum-desktop 跨平台打包脚本（阶段 1：物化宿主运行时闭包）。
+ *
+ * 平台分派：macOS 与 Windows 共用闭包物化逻辑（deployHost / dedupe /
+ * topUp / assertUniformDshVersions 等平台无关），仅在 symlink 物化
+ * （materializeSymlinks → resolveSymlinkSource）按 process.platform 分派——
+ * win32 不依赖 POSIX symlink 语义，realpath 失败时用 readlink + resolve 兜底，
+ * 物化策略相同（rm + cp(dereference)），不创建 symlink/junction、无需 admin 权限。
  *
  * 产出 build/host/ —— 一个自包含、可 boot 的宿主子进程运行时目录：
  *   - 用 `pnpm deploy --legacy` 从 desktop-host 这个 dependency-only deploy 根
@@ -17,7 +23,7 @@
 
 import { spawn } from 'node:child_process'
 import { existsSync, readFileSync } from 'node:fs'
-import { cp, lstat, mkdir, readdir, readFile, realpath, rm, writeFile } from 'node:fs/promises'
+import { cp, lstat, mkdir, readdir, readFile, readlink, realpath, rm, writeFile } from 'node:fs/promises'
 import { dirname, join, resolve, sep } from 'node:path'
 import { tmpdir } from 'node:os'
 
@@ -53,8 +59,16 @@ const SHIPPED_SKILLS_DIR = join(HOST_DIR, 'shipped-skills')
 
 async function run(label, command, args, options = {}) {
   console.log(`[pack-macos] ${label}`)
+  const useShell = process.platform === 'win32'
+  // win32 shell:true 时 Node.js 将 command + args.join(' ') 拼成字符串传给 cmd.exe，
+  // 含空格的参数（如 deployTmp 路径）会被拆分。用双引号包裹每个参数，内部双引号用 "" 转义。
+  const shellArgs = useShell ? args.map((a) => `"${a.replace(/"/g, '""')}"`) : args
   await new Promise((resolveRun, reject) => {
-    const child = spawn(command, args, { cwd: options.cwd ?? root, stdio: 'inherit' })
+    const child = spawn(command, shellArgs, {
+      cwd: options.cwd ?? root,
+      stdio: 'inherit',
+      shell: useShell,
+    })
     child.on('error', reject)
     child.on('exit', (code) => {
       if (code === 0) resolveRun()
@@ -77,7 +91,16 @@ async function findSymlink(directory) {
   return undefined
 }
 
-/** 把遗留符号链接物化为真实文件（照官方 build-exe-for-python-sdk 逻辑） */
+/**
+ * 把遗留符号链接物化为真实文件（照官方 build-exe-for-python-sdk 逻辑）。
+ *
+ * 平台分派（materializeSymlinks 本身平台无关，差异收敛在 resolveSymlinkSource）：
+ * - POSIX（macOS/Linux）：realpath 解析 symlink 源 → rm + cp(dereference) 物化
+ * - win32：不依赖 POSIX symlink 语义——realpath 对跨盘符 junction/reparse point
+ *   可能异常，失败时用 readlink + resolve 兜底。物化结果为真实文件（不创建
+ *   symlink/junction），无需 admin 权限。闭包守卫（assertUniformDshVersions 等）
+ *   与 macOS 同路径执行，不另起一套。
+ */
 async function materializeSymlinks(nodeModules) {
   let remaining = await findSymlink(nodeModules)
   while (remaining !== undefined) {
@@ -88,7 +111,7 @@ async function materializeSymlinks(nodeModules) {
       remaining = await findSymlink(nodeModules)
       continue
     }
-    const source = await realpath(remaining)
+    const source = await resolveSymlinkSource(remaining)
     const nested = join(source, 'node_modules')
     await rm(remaining, { recursive: true, force: true })
     await cp(source, remaining, {
@@ -97,6 +120,27 @@ async function materializeSymlinks(nodeModules) {
       filter: path => path !== nested && !path.startsWith(nested + sep),
     })
     remaining = await findSymlink(nodeModules)
+  }
+}
+
+/**
+ * 解析 symlink/junction 的真实源路径（平台分派）。
+ *
+ * - POSIX：直接 realpath（symlink 语义可靠，既有行为不变）
+ * - win32：realpath 优先，失败时（跨盘符 junction、reparse point 异常等）
+ *   回退到 readlink + path.resolve——不依赖 POSIX symlink 语义，避免无 admin
+ *   权限失败。物化不创建 symlink，无需 admin 权限。
+ */
+async function resolveSymlinkSource(linkPath) {
+  if (process.platform !== 'win32') {
+    return realpath(linkPath)
+  }
+  // win32：realpath 优先，失败时 readlink + resolve 兜底（不依赖 POSIX symlink 语义）
+  try {
+    return await realpath(linkPath)
+  } catch {
+    const linkTarget = await readlink(linkPath)
+    return resolve(dirname(linkPath), linkTarget)
   }
 }
 

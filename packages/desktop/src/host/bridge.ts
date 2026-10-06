@@ -27,6 +27,7 @@ import { fileURLToPath } from 'node:url'
 import { bootDesktop, resolveDesktopHome } from './boot.ts'
 import { CorumSessionArchive } from './session-archive.ts'
 import { imageMimeOf, videoMimeOf } from './corum-fs.ts'
+import { isRootPath, stripLeadingSep } from '@corum/corum-agent/win32-path-helpers'
 
 /** Flush all live session logs to durable storage (the quit hook). */
 interface FlushRequest { type: 'session-flush'; id: string }
@@ -270,7 +271,7 @@ async function main(): Promise<void> {
             return
           }
           const root = resolve(corumFsSvc.currentRoot())
-          const normalized = rel === '/' || rel === '' ? '.' : rel.replace(/^\/+/, '')
+          const normalized = isRootPath(rel) || rel === '' ? '.' : stripLeadingSep(rel)
           const target = resolve(root, normalized)
           if (target !== root && !target.startsWith(root + sep)) {
             res.statusCode = 403

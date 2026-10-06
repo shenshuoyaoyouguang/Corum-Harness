@@ -28,10 +28,11 @@
  */
 
 import { existsSync, mkdirSync, readdirSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs'
-import { dirname, join, normalize } from 'node:path'
+import { dirname, join, normalize, win32 } from 'node:path'
 import { realpathSync } from 'node:fs'
 import { resolveDshHome } from '@deepseek-ai/dsh-home-paths'
 import { DEFAULT_PROJECT_TYPE, isProjectType, type ProjectType } from './workspace-type.ts'
+import { isWindowsRoot, normalizeDriveLetter } from './win32-path-helpers.ts'
 
 /**
  * 工作区身份规范形：**由 cwd 决定**（`architecture.project.type-is-authoritative-and-monotonic`
@@ -51,8 +52,22 @@ export function canonicalWorkspaceKey(cwd: string | undefined): string | undefin
   try {
     return realpathSync(trimmed)
   } catch {
-    // 目录不可达：字形归一（折叠重复分隔符、去尾斜杠；保留根 `/`）。绝不 throw——
+    // 目录不可达：字形归一（折叠重复分隔符、去尾斜杠；保留根）。绝不 throw——
     // 死条目的身份仍需可比，迁移/列表都不该因一条失联目录整体失败。
+    if (process.platform === 'win32') {
+      // win32：path.win32.normalize 折叠分隔符 + 去尾 `\` + 盘符统一大写。
+      // 盘符大小写不归一会让 `d:\work` 与 `D:\work` 被判成两个工作区，身份失真
+      // 扩散到 task 泳道匹配与 task↔project 互斥门禁（P0-3）。
+      const collapsed = win32.normalize(trimmed)
+      // 保留盘符根 `D:\`；其余去尾分隔符（normalize 通常已去，显式防御双保险）。
+      const noTrailing = isWindowsRoot(collapsed) ? collapsed : collapsed.replace(/[\\/]+$/, '')
+      // win32 文件系统大小写不敏感：整个路径小写后归一盘符大写，
+      // 否则 `D:\Work\Foo` 与 `D:\work\foo`（同一目录的不同大小写拼写）会被
+      // 判成两个工作区，身份失真扩散到 task 泳道匹配与互斥门禁（P2）。
+      // 仅在 win32 兜底分支（目录不可达）做此归一，POSIX 大小写敏感不变。
+      return normalizeDriveLetter(noTrailing.toLowerCase())
+    }
+    // POSIX：折叠重复分隔符 + 去尾 `/` + NFC 归一。
     const collapsed = normalize(trimmed).normalize('NFC')
     return collapsed.length > 1 ? collapsed.replace(/\/+$/, '') : collapsed
   }

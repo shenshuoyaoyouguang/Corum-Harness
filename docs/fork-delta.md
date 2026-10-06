@@ -2206,3 +2206,98 @@ cordis.patch.yml`）。闭包登记：`packages/desktop/package.json` +
 
 `CORUM_GOAL_TRACE=<file>` 保留在 fork 里（默认关闭、零开销）：它就是本轮区分「事件没到」与
 「到了但没重评估」的唯一手段。
+---
+
+## 20. Windows 平台适配（2026-10-06 落地）
+
+> **性质**：本节登记的是 **Windows（win32）平台适配**改动——把原本只面向 macOS/Linux 的
+> fork 层与 desktop 壳带向 Windows 可用。它与 §1–§19 的「fork 包相对官方基线的逐字节差异」
+> 是**正交两轴**：§1–§19 回答「corum 与官方差在哪」，本节回答「corum 在 win32 上补了什么」。
+> 多数改动是**新增平台分支**（`process.platform === 'win32'`）而非修改既有跨平台逻辑，故
+> **不改变 §1 总览表的 fork 包基线差异统计**——除两处新增文件（见下「对 §1 台账的影响」）。
+>
+> **规划文档**：`docs/windows-adapter-plan.md`（本地工作产物，被 `.gitignore` 的 `docs/*` 排除，
+> 未入库）是本节改动的分层账本与产品决策记录；本节是其入库投影。
+>
+> **验证结论**：`pnpm typecheck`（0 错）→ `pnpm build`（成功）→ `pnpm test`（通过）→
+> `pnpm guard`（fork drift 通过）全链路绿。Windows 上若干测试用 `it.skipIf(win32)` 跳过，
+> 均在注释里点名对应的产品事实（见 AGENTS.md「平台」节）。
+
+### 20.1 改动清单（22 项，按层分组）
+
+#### P0 · fork 层路径处理（POSIX 假设修复）
+
+| # | 文件 | 类型 | 说明 |
+|---|---|---|---|
+| 1 | `packages/plugins/agent/corum-agent/src/win32-path-helpers.ts` | 新增 | win32 路径处理辅助模块（盘符剥离、路径分隔归一） |
+| 2 | `packages/plugins/agent/corum-agent/src/legacy-index.ts` | 修改 | `encodeCwdForSessionsDir` win32 分支——剥盘符 `:`、`\`/`/` 都换 `-`（治目录名含 `:` 致 `mkdir` 失败） |
+| 3 | `packages/plugins/agent/corum-agent/src/workspace-identity.ts` | 修改 | `canonicalWorkspaceKey` win32 字形兜底——盘符统一大写（治身份失真扩散到编排路由） |
+| 4 | `packages/plugins/agent/corum-agent/src/index.ts` | 修改 | re-export `win32-path-helpers` |
+| 5 | `packages/plugins/agent/corum-agent/package.json` | 修改 | `exports` 增补 `./win32-path-helpers` 子路径 |
+| 6 | `packages/plugins/agent/corum-agent/tsdown.config.ts` | 修改 | `entry` 增补 `win32-path-helpers` |
+| 7 | `packages/plugins/agent/corum-orchestration/src/win32-path-helpers.ts` | 新增 | 内部副本（依赖方向约束：orchestration 不反向依赖 corum-agent 的子路径） |
+| 8 | `packages/plugins/agent/corum-orchestration/src/confinement.ts` | 修改 | 三处 win32 路径提取修复——`absolutePathsIn` 盘符/UNC 匹配、`cdTargetsOf` 绝对路径判据、`confinementTempRoots` 丢弃伪 `/tmp` 根（安全面：治隔离写门禁漏判） |
+
+#### P1 · desktop host 平台分派
+
+| # | 文件 | 类型 | 说明 |
+|---|---|---|---|
+| 9 | `packages/desktop/src/host/corum-terminal.ts` | 修改 | shell 平台分派——win32 回退 `powershell.exe` + `-NoLogo`（治硬编码 `/bin/zsh` 崩溃） |
+| 10 | `packages/desktop/src/host/corum-fs.ts` | 修改 | 路径归一 win32 分支（盘符根判定） |
+| 11 | `packages/desktop/src/host/corum-bash-writes.ts` | 修改 | 写目标判定 win32 分支（绝对路径判据扩为 `/` 或盘符/UNC） |
+| 12 | `packages/desktop/src/host/bridge.ts` | 修改 | 路径归一 win32 分支 |
+| 13 | `packages/desktop/src/client/index.ts` | 修改 | `toRelativePath` win32 分支 |
+
+#### P1 · 开发态脚本 + 平台守卫
+
+| # | 文件 | 类型 | 说明 |
+|---|---|---|---|
+| 14 | `packages/desktop/scripts/dev.ps1` | 新增 | Windows 开发态启动器（稳定 dev home + HMR + 透传参数） |
+| 15 | `packages/desktop/scripts/dev.cmd` | 新增 | `dev.ps1` 的 cmd 入口 |
+| 16 | `packages/desktop/scripts/patch-electron-locales.mjs` | 修改 | 平台守卫——非 darwin 直接 no-op（治 `plutil` macOS 专有命令） |
+
+#### P2 · 打包链路
+
+| # | 文件 | 类型 | 说明 |
+|---|---|---|---|
+| 17 | `packages/desktop/scripts/fetch-node.mjs` | 修改 | 参数化平台/架构/格式——win32 → `node-vX-win-x64.zip` + 解压 |
+| 18 | `packages/desktop/scripts/pack-macos.mjs` | 修改 | win32 symlink 物化分支（junction + 解引用复制，治 symlink 需 admin/开发者模式） |
+| 19 | `packages/desktop/scripts/pack-app.mjs` | 新增 | electron-builder 平台分派（`--win --x64` NSIS target） |
+| 20 | `packages/desktop/package.json` | 修改 | `test` 脚本 + vitest + `win` 打包 target |
+| 21 | `packages/desktop/assets/icon.ico` | 新增 | Windows 图标（从 `icon.png` 生成） |
+
+#### P3 · 持续集成
+
+| # | 文件 | 类型 | 说明 |
+|---|---|---|---|
+| 22 | `.github/workflows/ci.yml` | 修改 | matrix 增补 `windows-latest` runner（`fetch-depth: 0` 不变，`fail-fast: false`） |
+
+### 20.2 对 §1 台账的影响
+
+- **新增文件**：`corum-agent/src/win32-path-helpers.ts`、`corum-orchestration/src/win32-path-helpers.ts`
+  是平台适配新增，**不在 §1 台账统计范围内**——§1 与 `scripts/recheck-fork-delta.sh` 只覆盖
+  6 个 session UI 包的逐字节差异，agent 包的新增文件非 fork 基线差异，仅在此登记。
+- **修改文件**：`legacy-index.ts`、`workspace-identity.ts`、`confinement.ts` 等的 win32 分支属
+  「实质修改」增量，但**不改变既有跨平台差异的语义**——win32 分支在 macOS/Linux 上不可达。
+- **desktop 壳与脚本**（#9–#22）不在 §1 fork 包台账范围内（desktop 非 fork 包），仅在此登记。
+
+### 20.3 产品决策点（非纯技术，已落地）
+
+1. **沙箱强制完备性降级**：`STATIC_ENFORCEMENT['windows-acl'] = 'partial'`
+   （`corum-sandbox-local/src/index.ts:186`，注释 181-185 行已说明 NTFS 硬链接降级原因——
+   WRITE_RESTRICTED 需 Everyone 在两个 restricting lists 中，外部对象授予 Everyone 写权限则
+   仍可写，NTFS 硬链接可将已授权 workspace 文件 alias 到工作区外）。这弱于 macOS Seatbelt 的
+   `'full'`，**Windows 产品文案/设置须明确告知**，不得默认呈现为与 macOS 等价。
+2. **`windows-acl` 只接受单个 `--workspace` 根**（`corum-sandbox-local/src/git-write-roots.ts:35-37`
+   已注释说明）：隔离子 Agent 的 git 元数据写根并集在 win32 上无法追加——隔离 worktree 的
+   `git add/commit` 在 Windows 上仍不可用，属已知功能性缺口。
+
+### 20.4 凭据存储（win32 路径已确认）
+
+- **权限校验**：`corum-credentials-local/src/index.ts:145` 的 `assertOwnerOnly` 在 win32 跳过
+  POSIX `0600` 权限校验（`if (process.platform === 'win32') return`，注释 129-131 行说明
+  Windows 无 mode 可检、ACL 不在此表达、跳过而非伪造）。文件保护由 create/replace API 表达。
+- **主密钥加密**：`desktop/src/electron/credentials-key.ts` 的 `safeStorage`（Electron）在
+  Windows 走 **DPAPI** 系统级加密（模块头第 8 行注释已写明「macOS Keychain / Windows DPAPI」），
+  明文主密钥从不落盘。`safeStorage.isEncryptionAvailable()` 为 false 时降级（不生成密钥文件、
+  不注入 env），绝不把主密钥明文落盘。

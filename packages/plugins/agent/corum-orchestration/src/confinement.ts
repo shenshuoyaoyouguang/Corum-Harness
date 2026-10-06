@@ -40,6 +40,10 @@
 
 import path from 'node:path'
 import { tmpdir } from 'node:os'
+// fork（corum）win32 适配：隔离写门禁的盘符/UNC 路径判定。
+// 依赖方向约束：corum-orchestration 不能 import corum-agent 的 win32-path-helpers
+// （corum-agent 依赖本包，反向不成立），故用本包内部同口径副本。
+import { isWindowsAbsolutePath } from './win32-path-helpers.ts'
 
 /**
  * fork（corum）：**变异工具 → 它的路径参数名**（写边界门禁的判定面）。
@@ -448,16 +452,23 @@ export function detectBashWrite(command: string): string | undefined {
  * 目标路径是否落在某个根之内（词法判定，根与目标都已 resolve）。
  *
  * 与官方 `dsh-fs-sandbox` 的 `isPathUnder` 相比少了两件事：不做 realpath/设备号
- * 等价判定，也不处理 Windows 大小写别名——**有意如此**。本函数服务的是
- * {@link confinementGuard}（纵深防御的一层启发式门禁），真正的强边界是
- * `workspace-write` 沙箱本身（它做完整判定）。门禁若在这里做重量级 syscall，
- * 只会让热路径变慢而不增加保证。
+ * 等价判定。win32 分支做大小写不敏感比较（NTFS 大小写不敏感），POSIX 分支
+ * 大小写敏感。本函数服务的是 {@link confinementGuard}（纵深防御的一层启发式
+ * 门禁），真正的强边界是 `workspace-write` 沙箱本身（它做完整判定）。
  *
  * @param target - 已 resolve 的目标绝对路径。
  * @param root - 已 resolve 的根绝对路径。
  * @returns 目标等于根或位于其下时为 true。
  */
 export function isPathInside(target: string, root: string): boolean {
+  if (process.platform === 'win32') {
+    // win32 文件系统大小写不敏感：`D:\MAIN\x` 须识别为 inside `D:\main`，
+    // 否则混合大小写路径的越界写漏判（confinementGuard 不拒）。
+    const lt = target.toLowerCase(), lr = root.toLowerCase()
+    if (lt === lr) return true
+    const prefix = lr.endsWith(path.sep) ? lr : lr + path.sep
+    return lt.startsWith(prefix)
+  }
   if (target === root) return true
   const prefix = root.endsWith(path.sep) ? root : root + path.sep
   return target.startsWith(prefix)
@@ -480,6 +491,49 @@ export function absolutePathsIn(command: string): string[] {
   for (const match of command.matchAll(/(?:^|[\s='"])(\/[^\s'"|;&()<>]*)/g)) {
     const raw = match[1]
     if (raw !== undefined && raw !== '/' && !raw.startsWith('//')) found.add(path.resolve(raw))
+  }
+  // fork（corum）win32 适配（P0-2，安全面）：增补盘符路径与 UNC 路径提取。
+  //
+  // 由来：旧正则只覆盖 POSIX `/abs`，win32 上 `git -C D:\主仓 merge` / `rm -rf \\server\share\x`
+  // 的写目标不被提取 ⇒ 写目标列表为空 ⇒ 门禁放行越界写（安全红线：漏判优先于误判）。
+  //
+  // 正则口径与任务 1 的 `win32-path-helpers` 完全一致（`^[A-Za-z]:[\\/]` 盘符、`^[/\\]{2}` UNC）；
+  // `cdTargetsOf` 的单 arg 判定复用 `isWindowsAbsolutePath`，此处提取面必须用正则扫文本。
+  //
+  // 引号内的盘符路径（含空格）：`"D:\my path\x"` / `'D:\my path\x'`
+  // 由来（P1）：旧正则的路径段 `[^\s'"|;&()<>]*` 在空格处截断，含空格的引号路径只提取前半段
+  // （`D:\my`）⇒ 越界写目标漏判（安全红线：漏判优先于误判）。此处完整提取引号内路径，
+  // 引号本身剥离（不进 path.resolve）；盘符分支前缀不再含 `"`/`'`，避免重复与截断噪音候选。
+  for (const match of command.matchAll(/"([A-Za-z]:[\\/][^"]*)"|'([A-Za-z]:[\\/][^']*)'/g)) {
+    const raw = match[1] ?? match[2]
+    if (raw !== undefined) found.add(path.resolve(raw))
+  }
+  // 盘符路径：`D:\target`、`C:/target`（分隔符可混写）；含重定向目标 `>D:\target`（`>` 前缀，
+  // 覆盖 `>D:\x` / `>>D:\x` / `2>D:\x` 等形态）。前缀不含 `"`/`'`：引号内路径由上一循环完整处理。
+  for (const match of command.matchAll(/(?:^|[\s=>])([A-Za-z]:[\\/][^\s'"|;&()<>]*)/g)) {
+    const raw = match[1]
+    if (raw !== undefined) found.add(path.resolve(raw))
+  }
+  // UNC 路径：`\\server\share\target`、`//server/share/target`（双分隔符开头，可混写）
+  // 注意：POSIX 正则已排除 `//` 开头（POSIX 下 `//` 非合法路径），此处 UNC 正则把 `//server/share`
+  // 作为 UNC 提取（win32 合法形态）；Set 去重保证不重复。
+  // fork 门控（P3）：仅在 win32 上提取 UNC —— POSIX 上 `//server/share` 是相对路径（`//` 非
+  // 合法 UNC），既有 POSIX 正则已用 `!raw.startsWith('//')` 排除 `//` 前缀；此处须同样门控，
+  // 否则 POSIX 上 `//server/share` 进入写目标候选集，与 POSIX 分支口径矛盾。
+  if (process.platform === 'win32') {
+    // 引号内的 UNC 路径（含空格）：`"\\server\my share\x"` / `'\\server\my share\x'`
+    // 由来同盘符分支（507 行）：旧正则在空格处截断，含空格的引号路径只提取前半段
+    // ⇒ 越界写目标漏判（安全红线：漏判优先于误判）。此处完整提取引号内 UNC 路径，
+    // 与盘符分支的引号处理对称。
+    for (const match of command.matchAll(/"([/\\]{2}[^"]*)"|'([/\\]{2}[^']*)'/g)) {
+      const raw = match[1] ?? match[2]
+      if (raw !== undefined) found.add(path.resolve(raw))
+    }
+    // UNC 路径（无引号）：前缀不含 `"`/`'`，引号内路径由上一循环完整处理。
+    for (const match of command.matchAll(/(?:^|[\s=])([/\\]{2}[^\s'"|;&()<>]*)/g)) {
+      const raw = match[1]
+      if (raw !== undefined) found.add(path.resolve(raw))
+    }
   }
   // 家目录简写
   if (/(^|[\s='"])~(?=[/\s'"]|$)/.test(command) || /\$HOME\b|\$\{HOME\}/.test(command)) {
@@ -559,7 +613,11 @@ function cdTargetsOf(command: string, start: string): string[] {
       cwd = '~'
       continue
     }
-    if (!arg.startsWith('/')) {
+    // fork（corum）win32 适配（P0-2）：绝对路径判据从 `arg.startsWith('/')` 扩为
+    // 「`/` 开头 **或** win32 盘符/UNC 开头」。否则 win32 上 `cd D:\主仓` 会被当相对
+    // 路径走 `path.resolve(cwd, arg)` ⇒ 越界判定失真（复用 isWindowsAbsolutePath 判定，
+    // 不另写正则）。POSIX 分支行为不变（isWindowsAbsolutePath 对 POSIX 路径返回 false）。
+    if (!arg.startsWith('/') && !isWindowsAbsolutePath(arg)) {
       if (cwd === '~') { targets.push('~'); continue }
       cwd = path.resolve(cwd, arg)
       targets.push(cwd)
@@ -739,5 +797,12 @@ export function confinementGuard(
  * @returns 平台临时目录（已 resolve）。
  */
 export function confinementTempRoots(): string[] {
+  // fork（corum）win32 适配（P0-2）：win32 上 `path.resolve('/tmp')` 解析为当前盘符下
+  // `\tmp`（伪根，非真实临时目录）——把它放进允许集会让当前盘符下 `\tmp` 任意写放行，
+  // 而真正的临时目录是 `tmpdir()`（如 `C:\Users\xxx\AppData\Local\Temp`）。
+  // win32 分支只返回 `[tmpdir()]`；POSIX 分支保持 `[path.resolve('/tmp'), tmpdir()]` 去重。
+  if (process.platform === 'win32') {
+    return [path.resolve(tmpdir())]
+  }
   return [...new Set([path.resolve('/tmp'), path.resolve(tmpdir())])]
 }

@@ -29,6 +29,7 @@
 
 import { existsSync, readdirSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
+import { createHash } from 'node:crypto'
 import { corumHome } from './session-index.ts'
 import type { SessionIndexEntry } from './session-index.ts'
 // 工作区身份（L0 助手）：项目模式剥离后由 workspace-identity.ts 承接。
@@ -257,8 +258,68 @@ export function sessionBodyDir(cwd: string, sessionId: string, home: string = co
 /**
  * cwd → 会话目录名编码（官方 session-persistence 同款：`--` + 去根斜杠后
  * 分隔符换 `-` + `--`）。
+ *
+ * 平台分支：
+ * - **win32**：保留盘符字母（`D:` → `D-`，不剥盘符），再把 `\` 与 `/`
+ *   一并换 `-`。避免目录名含 `:` / `\` 导致 `mkdir` ENOENT——这是会话本体与存量
+ *   迁移在 Windows 上整体不可用的根因。**保留盘符**是必须的：剥盘符会让
+ *   `C:\work\foo` 与 `D:\work\foo` 编码到同一目录名 `--work-foo--`，不同盘的
+ *   同名工作区会共享会话存储（P1）。
+ * - **POSIX**：去前导 `/` 后 `/` 换 `-`（原逻辑，保持不变）。
+ *
+ * 产出恒以 `--` 包围，且不含 `:` / `\` / `/` 等 Windows 非法目录名字符。
+ * 过长 key（深层 Windows 工作区路径展平后可能超 255 字符的组件限制）会
+ * 被稳定截断为「前缀 + sha1 后缀」，保留区分度且保证 `mkdir` 可建（P2）。
  */
 export function encodeCwdForSessionsDir(cwd: string): string {
   const key = canonicalWorkspaceKey(cwd) ?? cwd
-  return `--${key.replace(/^\//, '').replace(/[/]/g, '-')}--`
+  return `--${encodeSessionDirKey(key)}--`
+}
+
+/**
+ * 会话目录名中段长度上限。
+ *
+ * Windows 组件名限 255 字符，`--` 包围占 4 字符（见 {@link encodeCwdForSessionsDir}），
+ * 留余量取 200——既远低于 255，又给 hash 后缀留足空间。
+ */
+const SESSION_DIR_KEY_MAX = 200
+
+/**
+ * 长 key 截断用的 hash 后缀长度（sha1 hex 前 8 字符，32 bit 区分度）。
+ *
+ * 截断形为 `<前 191 字符>-<8 字符 hash>`，总长恰为 {@link SESSION_DIR_KEY_MAX}。
+ */
+const SESSION_DIR_KEY_HASH_LEN = 8
+
+/**
+ * 工作目录键 → 会话目录名中段（不含 `--` 包围）。
+ *
+ * 按平台分派：win32 转义字面 `-` → `-h`，盘符 `:` 与路径分隔符 → `-s`；POSIX 去前导
+ * `/` 后 `/` 换 `-`。产出不含 `:` / `\` / `/`，保证 `mkdir` 在任一平台均可建。
+ *
+ * 过长产出（`> {@link SESSION_DIR_KEY_MAX}`）会被稳定截断为「前缀 + sha1 后缀」：
+ * 同一 key 恒截到同一结果（幂等），不同 key 借 hash 后缀保留区分度。
+ */
+function encodeSessionDirKey(key: string): string {
+  let encoded: string
+  if (process.platform === 'win32') {
+    // 不剥盘符：`C:\work\foo` 与 `D:\work\foo` 须编码到不同目录名，否则不同盘的
+    // 同名工作区会共享会话存储（P1）。盘符大小写已由 canonicalWorkspaceKey 归一。
+    // 转义字面 `-` → `-h`，路径分隔符/盘符 `:` → `-s`：确保字面 hyphen 与路径
+    // 分隔符可区分（`C:\a-b` → `C-s-sa-hb` ≠ `C:\a\b` → `C-s-sa-sb`），`-h` 与
+    // `-s` 的第二字符不同（h vs s），解析无歧义。
+    encoded = key.replace(/-/g, '-h').replace(/^([A-Za-z]):/, '$1-s').replace(/[\\/]/g, '-s')
+  } else {
+    encoded = key.replace(/^\//, '').replace(/[/]/g, '-')
+  }
+  // 长 key 截断：深层 Windows 工作区路径展平后可能超 255 字符的组件限制，
+  // 导致会话路径无法创建或找到（P2）。取前缀 + 稳定 hash 后缀，保留区分度。
+  // 仅 win32 截断：POSIX 存量会话目录名用原编码创建，截断会改变编码结果，
+  // 迁移时 body lookup 找不到原目录，导致存量会话从统一索引中丢失（P1 回归）。
+  if (process.platform === 'win32' && encoded.length > SESSION_DIR_KEY_MAX) {
+    const hash = createHash('sha1').update(encoded).digest('hex').slice(0, SESSION_DIR_KEY_HASH_LEN)
+    const prefixLen = SESSION_DIR_KEY_MAX - SESSION_DIR_KEY_HASH_LEN - 1 // 留 1 字符给分隔 `-`
+    encoded = `${encoded.slice(0, prefixLen)}-${hash}`
+  }
+  return encoded
 }

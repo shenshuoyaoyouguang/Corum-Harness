@@ -74,10 +74,18 @@ dsh 运行时内核 + Electron 桌面承载层 + 41 个自研插件 + 一套默�
 ```sh
 pnpm install
 pnpm shell:dev        # 开发态启动桌面应用
-pnpm pack             # 打包 macOS 应用（.app / .dmg）
+pnpm pack             # 打包桌面应用（macOS .app/.dmg；Windows NSIS 见 docs/fork-delta.md §20）
 ```
 
-> **平台说明**：当前打包链路面向 **macOS（Apple Silicon）**；跨平台（Windows / Linux）尚在规划中。
+> **平台说明**：目标平台为 **macOS**（一等公民，全量能力）与 **Linux**（开发态支持；
+> 打包链路当前面向 macOS，Linux 打包 target 待支持）。**Windows 已完成适配**
+> （2026-10-06，见 [`docs/fork-delta.md`](docs/fork-delta.md) §20），开发态可启动、可产出
+> NSIS 安装包、`windows-latest` 已纳入 CI 矩阵。已知降级：
+> - **沙箱强制完备性为 `partial`**（vs macOS Seatbelt 的 `full`）——NTFS 硬链接可把已授权
+>   workspace 文件 alias 到工作区外，Windows 后端只强制执行 ACL 可表达的剩余面，产品文案须明示；
+> - **`windows-acl` runner 只接受单个 `--workspace` 根**——隔离子 Agent 的 git 提交在 Windows
+>   上暂不可用（指挥模式的多 Agent 隔离 worktree 功能性缺口）；
+> - **symlink 物化需开发者模式 / admin 权限**——打包链路已改用 junction + 解引用复制绕开。
 
 ### 构建与检查
 

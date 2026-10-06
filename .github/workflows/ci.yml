@@ -12,14 +12,17 @@ concurrency:
 
 jobs:
   verify:
-    # 目标平台是 macOS（Apple Silicon）：Seatbelt 沙箱相关的断言只有 macOS 能跑。
-    # Linux 作为可移植性核对（路径语义同 Unix），fail-fast 让两个平台各自独立出结论。
-    # Windows 不纳入：产品的路径编码/沙箱是 macOS-Linux 形态，另有若干用例只在
-    # Windows 失败（测试侧平台假设，见 tests 内的 skipIf 注释）。
+    # 目标平台是 macOS（Apple Silicon）+ Linux + Windows。
+    # macOS：Seatbelt 沙箱相关的断言只有 macOS 能跑（profiles.spec.ts 的 SBPL）。
+    # Linux：可移植性核对（路径语义同 Unix）。
+    # Windows：产品路径编码/沙箱形态不同，已通过 skipIf(win32) 分类处理
+    # （见 tests 内的 skipIf 注释：macOS Seatbelt 专有断言保留 skip + 注释点明产品事实；
+    # 可平台无关表达的用例已转正；win32 专例用 skipIf(!isWin32) 限定）。
+    # fail-fast: false 让三个平台各自独立出结论，Windows 失败不阻断其他平台。
     strategy:
       fail-fast: false
       matrix:
-        os: [macos-latest, ubuntu-latest]
+        os: [macos-latest, ubuntu-latest, windows-latest]
     name: verify · ${{ matrix.os }}
     runs-on: ${{ matrix.os }}
     steps:

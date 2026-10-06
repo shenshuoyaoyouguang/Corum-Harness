@@ -27,6 +27,7 @@ import { TypertRemoteService, Remote } from '@deepseek-ai/dsh-typert-protocol'
 // fork 包 @corum/corum-api-remotes 自包含（UNIFIED-EVENT-BUS §2.2 类型安全三段式
 // 之一），type-only import 编译期即擦除，无运行时依赖。
 import type {} from '@corum/corum-api-remotes/corum-events'
+import { isRootPath, stripLeadingSep } from '@corum/corum-agent/win32-path-helpers'
 
 declare module '@deepseek-ai/cordis' {
   interface Context {
@@ -171,9 +172,10 @@ export class CorumFsService extends TypertRemoteService {
     const requested = path ?? '/'
     let target: string
     try {
-      // 路径一律按相对根处理：'/' 与 '' 映射根，剥掉前导斜杠，杜绝
+      // 路径一律按相对根处理：根（POSIX '/' 或 win32 'D:\'）与 '' 映射根，
+      // 剥掉前导分隔符（POSIX 剥 '/'，win32 保留盘符路径完整性），杜绝
       // resolve(root, '/abs') 被绝对路径覆盖 root 的逃逸。
-      const normalized = requested === '/' || requested === '' ? '.' : requested.replace(/^\/+/, '')
+      const normalized = isRootPath(requested) || requested === '' ? '.' : stripLeadingSep(requested)
       target = resolve(root, normalized)
       if (target !== root && !target.startsWith(root + sep)) {
         throw new Error(`path escapes the project root: ${requested}`)
