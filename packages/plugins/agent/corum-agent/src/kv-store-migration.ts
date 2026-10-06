@@ -129,7 +129,7 @@ export async function migrateKvStore(
   const sqlite = new SqliteStorageBackend({ path: dbPath, journalMode: 'wal' })
   try {
     for (const plan of KV_MIGRATION_PLANS) {
-      result.outcomes.push(await migrateOne(json, sqlite, plan, say))
+      result.outcomes.push(await migrateOne(json, sqlite, plan, say, root))
     }
   } finally {
     // 两个后端都必须释放：sqlite 会持有 db 句柄，不关会让后续 patch 挂载的
@@ -146,11 +146,12 @@ async function migrateOne(
   sqlite: SqliteStorageBackend,
   plan: UnitPlan,
   say: (msg: string) => void,
+  root: string,
 ): Promise<KvUnitMigrationOutcome> {
   const base = { unit: plan.name, records: 0, global: false }
   try {
     // JSON 侧没有任何痕迹 ⇒ 无事可做（不 materialize，避免造空单元）。
-    if (!hasJsonTrace(plan)) return { ...base, status: 'empty' }
+    if (!hasJsonTrace(root, plan)) return { ...base, status: 'empty' }
 
     const descriptor = {
       name: plan.name,
@@ -215,8 +216,7 @@ async function migrateOne(
  * 只看「有没有」而不解析内容：解析留给 backend（它对坏文件有既定的降级语义，
  * 本函数不该重复实现一套）。
  */
-function hasJsonTrace(plan: UnitPlan): boolean {
-  const root = storagesRoot()
+function hasJsonTrace(root: string, plan: UnitPlan): boolean {
   if (plan.layout === 'single') return existsSync(join(root, `${plan.name}.json`))
   const dir = join(root, plan.name)
   if (!existsSync(dir)) return false
