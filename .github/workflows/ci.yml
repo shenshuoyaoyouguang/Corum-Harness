@@ -12,10 +12,16 @@ concurrency:
 
 jobs:
   verify:
-    # 目标平台是 macOS（Apple Silicon）。测试套件里有 Seatbelt 沙箱与 Unix 路径断言，
-    # 因此用 macos-latest；Linux/Windows 上这些断言会失败（Windows 上另有 ~22 处
-    # 平台假设失败），那属于测试侧限制、不是产品缺陷。
-    runs-on: macos-latest
+    # 目标平台是 macOS（Apple Silicon）：Seatbelt 沙箱相关的断言只有 macOS 能跑。
+    # Linux 作为可移植性核对（路径语义同 Unix），fail-fast 让两个平台各自独立出结论。
+    # Windows 不纳入：产品的路径编码/沙箱是 macOS-Linux 形态，另有若干用例只在
+    # Windows 失败（测试侧平台假设，见 tests 内的 skipIf 注释）。
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-latest, ubuntu-latest]
+    name: verify · ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
         with:
