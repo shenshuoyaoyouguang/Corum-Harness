@@ -710,7 +710,12 @@ export function corumMergedBranches(cwd: string): Set<string> {
 
 /** fork（corum）：realpath（macOS 的 /var → /private/var 符号链接会让前缀/相等比较失配）。 */
 function corumRealPath(p: string): string {
-  try { return realpathSync(p) } catch { return p }
+  // win32: realpathSync.native() 解析 8.3 短名（如 RUNNER~1 → runneradmin），
+  // 而 realpathSync 不解析。GitHub Actions Windows runner 的 tmpdir() 返回 8.3 短名，
+  // git worktree list --porcelain 报全名 ⇒ 两侧不匹配。
+  try {
+    return process.platform === 'win32' ? realpathSync.native(p) : realpathSync(p)
+  } catch { return p }
 }
 
 /** fork（corum）：分支是否带着 HEAD 之外的提交（true = 有独立工作，不能删）。 */
