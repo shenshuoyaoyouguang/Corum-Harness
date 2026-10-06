@@ -3,7 +3,17 @@ name: CI
 on:
   push:
     branches: [main]
+    paths-ignore:           # 纯文档 / 静态资源改动不触发 CI（guard 不读这些文件）
+      - '**/*.md'
+      - 'docs/assets/**'
+      - 'LICENSE'
+      - '.gitignore'
   pull_request:
+    paths-ignore:
+      - '**/*.md'
+      - 'docs/assets/**'
+      - 'LICENSE'
+      - '.gitignore'
   workflow_dispatch:        # 手动触发 fork-drift-byte 全量字节比对（见下）
 
 # ── 单点基线（Phase 1.2）────────────────────────────────────────────────
