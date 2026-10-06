@@ -39,7 +39,7 @@ pnpm guard         # fork drift：与官方检出逐字节比对 + 事件声明�
 pnpm ci            # = typecheck && test && guard
 ```
 
-CI（`.github/workflows/ci.yml`）在 **`macos-latest` 与 `ubuntu-latest` 两个平台**跑同一组五步
+CI（`.github/workflows/ci.yml`）在 **`macos-latest`、`ubuntu-latest`、`windows-latest` 三个平台**跑同一组五步
 （install → typecheck → build → test → guard，`fail-fast: false`）。checkout 必须
 `fetch-depth: 0`——`fold-equivalence.spec.ts` 要读 git 历史。
 

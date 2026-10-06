@@ -312,7 +312,9 @@ function encodeSessionDirKey(key: string): string {
   }
   // 长 key 截断：深层 Windows 工作区路径展平后可能超 255 字符的组件限制，
   // 导致会话路径无法创建或找到（P2）。取前缀 + 稳定 hash 后缀，保留区分度。
-  if (encoded.length > SESSION_DIR_KEY_MAX) {
+  // 仅 win32 截断：POSIX 存量会话目录名用原编码创建，截断会改变编码结果，
+  // 迁移时 body lookup 找不到原目录，导致存量会话从统一索引中丢失（P1 回归）。
+  if (process.platform === 'win32' && encoded.length > SESSION_DIR_KEY_MAX) {
     const hash = createHash('sha1').update(encoded).digest('hex').slice(0, SESSION_DIR_KEY_HASH_LEN)
     const prefixLen = SESSION_DIR_KEY_MAX - SESSION_DIR_KEY_HASH_LEN - 1 // 留 1 字符给分隔 `-`
     encoded = `${encoded.slice(0, prefixLen)}-${hash}`

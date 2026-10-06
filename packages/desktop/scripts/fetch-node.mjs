@@ -153,8 +153,10 @@ async function relocateWin32Binaries(nodeDir) {
   await mkdir(binDir, { recursive: true })
   for (const entry of await readdir(nodeDir)) {
     if (entry === 'bin') continue
-    // 移入 bin/ 的：Windows 可执行文件与 cmd 脚本（node.exe / npm.cmd / npx.cmd / corepack.cmd）
-    if (/\.(exe|cmd|ps1)$/i.test(entry)) {
+    // 移入 bin/ 的：仅 node.exe —— hostNode() 期望 `Resources/node/bin/node.exe`。
+    // .cmd 启动器用 `%~dp0` 解析依赖路径（相对自身目录），移入 bin/ 后找不到根目录的
+    // node_modules/npm/，导致 npm/npx 失效；.cmd/.ps1 留在归档根，相对引用仍有效（P2）。
+    if (/\.exe$/i.test(entry)) {
       await rename(join(nodeDir, entry), join(binDir, entry))
     }
   }
