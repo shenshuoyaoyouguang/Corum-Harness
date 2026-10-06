@@ -59,11 +59,15 @@ const SHIPPED_SKILLS_DIR = join(HOST_DIR, 'shipped-skills')
 
 async function run(label, command, args, options = {}) {
   console.log(`[pack-macos] ${label}`)
+  const useShell = process.platform === 'win32'
+  // win32 shell:true 时 Node.js 将 command + args.join(' ') 拼成字符串传给 cmd.exe，
+  // 含空格的参数（如 deployTmp 路径）会被拆分。用双引号包裹每个参数，内部双引号用 "" 转义。
+  const shellArgs = useShell ? args.map((a) => `"${a.replace(/"/g, '""')}"`) : args
   await new Promise((resolveRun, reject) => {
-    const child = spawn(command, args, {
+    const child = spawn(command, shellArgs, {
       cwd: options.cwd ?? root,
       stdio: 'inherit',
-      shell: process.platform === 'win32',
+      shell: useShell,
     })
     child.on('error', reject)
     child.on('exit', (code) => {
