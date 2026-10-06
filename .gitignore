@@ -56,10 +56,11 @@ docs/tasks/evidence/**/*.jpg
 docs/tasks/evidence/**/*.jpeg
 
 # ── 本地开发台账/设计稿（2026-10-04 开源前清理：本地保留、不再跟踪）──
-docs/
+docs/*
 !docs/assets/
 !docs/assets/wechat-group-qrcode.webp
 !docs/fork-delta.md
+!docs/archived-upstream-index.md
 doc/
 .trae/
 *.pen
