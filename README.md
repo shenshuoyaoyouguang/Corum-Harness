@@ -28,7 +28,7 @@
 ## 这是什么
 
 Corum Harness 把 DeepSeek Harness 从一个 **Agent 运行时**，扩展成一个**可直接使用的 Agent 产品**：
-dsh 运行时内核 + Electron 桌面承载层 + 38 个自研插件 + 一套默认配置。
+dsh 运行时内核 + Electron 桌面承载层 + 41 个自研插件 + 一套默认配置。
 
 > **定位类比**：DeepSeek Harness 是「Linux 内核」（Cordis 插件框架 + agent loop + capability seam），
 > 本项目是「发行版」（产品化的 Agent 能力 + 插件 + 默认配置）。**不改内核，只做用户空间。**
@@ -58,7 +58,7 @@ dsh 运行时内核 + Electron 桌面承载层 + 38 个自研插件 + 一套默�
 
 ### 工程化
 
-- **插件化发行**：38 个插件包按 `ui` / `session` / `agent` 分组，能力与界面同包。
+- **插件化发行**：41 个插件包按 `ui` / `session` / `agent` 分组，能力与界面同包。
 - **最小内核侵入**：官方包尽量从 npm registry 原样引用；必要的定制集中在 **16 个 fork 包**
   （修补底座在上层暴露的能力缺口），差异全部登记在 [`docs/fork-delta.md`](docs/fork-delta.md)
   并由 `scripts/verify-fork-drift.sh` 守卫字节级一致性——其余定制仍通过「写插件 + overlay 覆盖行」完成。
@@ -100,10 +100,10 @@ packages/
 │   ├── src/host/              #   host 侧：桥接、IPC、打包闭包
 │   ├── src/client/            #   renderer 侧：壳、编辑器、布局
 │   └── assets/                #   品牌与图标资源
-└── plugins/                  # 38 个插件包，按能力分组
-    ├── ui/        (12)        #   界面区域：面板、插件中心、主题基座
+└── plugins/                  # 41 个插件包，按能力分组
+    ├── ui/        (14)        #   界面区域：面板、插件中心、主题基座
     ├── session/   (11)        #   会话与交互：对话、审批、提问、模型选择
-    └── agent/     (15)        #   Agent 能力：编排、子 Agent、记忆、MCP、工具
+    └── agent/     (16)        #   Agent 能力：编排、子 Agent、记忆、MCP、工具
 
 profile/corum/                # 发行版 profile 清单
 cordis.patch.yml              # 发行版 overlay（覆盖官方默认行 + 插入插件行）
@@ -141,7 +141,7 @@ fork 差异台账见 [`docs/fork-delta.md`](docs/fork-delta.md)（改 fork 包�
 | | DeepSeek Harness | Corum Harness |
 |---|---|---|
 | 角色 | Agent 运行时内核 | Agent 产品发行版 |
-| 提供 | Cordis 框架、agent loop、工具系统、capability seam | Agent 能力产品化、38 个插件、默认配置 |
+| 提供 | Cordis 框架、agent loop、工具系统、capability seam | Agent 能力产品化、41 个插件、默认配置 |
 | 依赖方式 | — | 大部分从 npm registry 引用官方包（`@deepseek-ai/dsh-*`）；另维护 **16 个 fork 包**修补能力缺口 |
 
 本项目维护 16 个 **fork 包**（用于修补底座在上层暴露的能力缺口），差异全部登记在

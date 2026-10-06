@@ -44,6 +44,14 @@
 
 ## Key Documents (read as needed)
 
+> ⚠️ **文档现状（2026-10-06 核实）**：本节引用的 `docs/dev-conventions.md`、
+> `docs/LESSONS.md`、`docs/VERSIONING.md`、`docs/plugin-template.md`、
+> `docs/DBG-ARCHIVE-INDEX.md`、`docs/audit/*` 与各 `docs/HANDOFF-*.md` **均未随本仓分发**
+> （`git log --all -- docs/` 证实这些路径从未入库；本仓 `docs/` 只有 `fork-delta.md` 与
+> `assets/`）。下方条目保留的是**规则索引与红线摘要**：需要原文请向上游开发仓索取，
+> **不要按这些路径找文件**（找不到不是缺文件，是从未分发）。`skills/` 下的两个技能
+> （`corum-dev-conventions`、`corum-official-upgrade`）在仓内，可直接读。
+
 - **`corum-dev-conventions` 技能** — 本文件与 `docs/dev-conventions.md` 的**可执行投影**
   （红线 / 改动工作流 / 已付学费的坑 / 证据标准 / 协作纪律），源码在本仓
   `skills/corum-dev-conventions/SKILL.md`，装进 corum 技能库并绑定给「Corum 开发」。
