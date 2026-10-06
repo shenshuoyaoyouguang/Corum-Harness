@@ -652,7 +652,7 @@ if select_section 6; then
 section "[6] inline-css 标记卫生（id 归属 + 幂等判定）"
 while IFS= read -r script; do
   pkg_dir="$(dirname "$(dirname "$script")")"
-  pkg_name=$(node -e "try{console.log(require('$pkg_dir/package.json').name)}catch(e){console.log('?')}" 2>/dev/null)
+  pkg_name=$(cd "$pkg_dir" 2>/dev/null && node -e "try{console.log(require('./package.json').name)}catch(e){console.log('?')}" 2>/dev/null)
   # 只看代码行：注释里出现该字符串（说明为什么禁止）不算违规。
   # ⚠️ 2026-09-14 收紧：原判定用 `grep -n … | grep -vE '^[0-9]+:[[:space:]]*(\*|//)'`，
   # 只挡「行首是 * 或 //」的整行注释——行尾注释、`/* */` 块注释体内的行都漏。
