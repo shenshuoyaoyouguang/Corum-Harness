@@ -63,13 +63,13 @@ describe('canonicalWorkspaceKey win32 字形兜底（P0-3 盘符大小写归一�
     expect(mixed).toBe('D:\\work\\foo')
   })
 
-  it('幂等：同一工作目录多次归一产出同一身份键', () => {
+  it('幂等：归一后再归一仍不变（f(f(cwd)) === f(cwd)）', () => {
     const cwd = 'd:\\projects\\corum'
-    const a = canonicalWorkspaceKey(cwd)
-    const b = canonicalWorkspaceKey(cwd)
-    const c = canonicalWorkspaceKey(cwd)
-    expect(a).toBe(b)
-    expect(b).toBe(c)
+    const a = canonicalWorkspaceKey(cwd)!
+    const b = canonicalWorkspaceKey(a)!
+    const c = canonicalWorkspaceKey(b)!
+    expect(b).toBe(a)
+    expect(c).toBe(a)
   })
 
   it('盘符根保留：D:\\ 不被去尾分隔符破坏', () => {

@@ -41,10 +41,15 @@ function isPackaged(): boolean {
 
 /**
  * The Node binary that runs the host child. Packaged: the bundled official
- * Node at `Resources/node/bin/node`; dev: the CLI launcher's process.execPath.
+ * Node at `Resources/node/bin/node` (win32: `node.exe`); dev: the CLI
+ * launcher's process.execPath.
  */
 function hostNode(): string {
-  if (isPackaged()) return join(process.resourcesPath, 'node', 'bin', 'node')
+  if (isPackaged()) {
+    // win32: node.exe；POSIX: node（与 fetch-node.mjs 物化的 bin/ 布局对齐）
+    const nodeBin = process.platform === 'win32' ? 'node.exe' : 'node'
+    return join(process.resourcesPath, 'node', 'bin', nodeBin)
+  }
   return process.env.CORUM_HOST_NODE ?? 'node'
 }
 

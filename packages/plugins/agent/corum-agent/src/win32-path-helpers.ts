@@ -127,9 +127,15 @@ export function isRootPath(p: string): boolean {
 /**
  * 平台分派的前导分隔符剥离。
  *
- * - win32 **不剥**盘符前导 `\`：保留盘符路径完整性（`D:\work\foo` 原样返回），
- *   后续 `path.resolve(root, 'D:\\work\\foo')` 会正确识别为绝对路径，由调用方
- *   的根逃逸校验（`target.startsWith(root + sep)`）兜底。
+ * - win32：
+ *   - 盘符 / UNC 绝对路径（`D:\work\foo`、`\\server\share`）**原样返回**，保留
+ *     盘符路径完整性，后续 `path.resolve(root, 'D:\\work\\foo')` 会正确识别为
+ *     绝对路径，由调用方的根逃逸校验（`target.startsWith(root + sep)`）兜底。
+ *   - 其余路径剥前导 `/`（corumFs 风格的相对路径，如 `/sub/file.ts` →
+ *     `sub/file.ts`）。**这至关重要**：客户端总是发送 `/` 前缀的相对路径，
+ *     若不剥前导 `/`，`path.resolve(root, '/sub')` 在 win32 上会把 `/sub` 当
+ *     绝对路径解析到盘根 `C:\sub`，导致逃逸校验抛 `path escapes the project
+ *     root`，list() 对所有路径抛错、应用完全不可用。
  * - POSIX 走 `replace(/^\/+/, '')`：剥前导 `/`，杜绝 `resolve(root, '/abs')`
  *   被绝对路径覆盖 root 的逃逸。
  *
@@ -140,6 +146,11 @@ export function isRootPath(p: string): boolean {
  */
 export function stripLeadingSep(p: string): string {
   if (typeof p !== 'string') return p
-  if (process.platform === 'win32') return p
+  if (process.platform === 'win32') {
+    // win32: 盘符/UNC 绝对路径保留（由调用方逃逸校验兜底）；
+    // 其余剥前导 /（corumFs 风格的相对路径，如 /sub/file.ts → sub/file.ts）。
+    if (isWindowsAbsolutePath(p)) return p
+    return p.replace(/^\/+/, '')
+  }
   return p.replace(/^\/+/, '')
 }

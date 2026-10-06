@@ -45,15 +45,16 @@ CI（`.github/workflows/ci.yml`）在 **`macos-latest` 与 `ubuntu-latest` 两�
 
 ## 平台
 
-目标平台是 **macOS 与 Linux**。**Windows 不受产品支持**（不只是测试的事）：
-- `encodeCwdForSessionsDir`（`legacy-index.ts`）只去 `^/`、只把 `/` 换成 `-` ⇒ Windows 绝对
-  cwd 编码出的目录名含盘符 `:`，`mkdir` 建不出来 ⇒ 会话本体与存量迁移在 Windows 上无法工作。
-- `absolutePathsIn`（`confinement.ts`）只提取 `/` 开头的 token ⇒ Windows 风格的 `D:\…` 写目标
-  提不出来，隔离门禁漏判。
-- Seatbelt profile 生成器是 macOS 专有；`windows-acl` runner 只接受单个 `--workspace` 根。
+目标平台是 **macOS 与 Linux**（一等公民）。**Windows 已适配**（2026-10-06，见
+`docs/fork-delta.md` §20），有已知降级：
+- **沙箱强制完备性为 `partial`**（vs macOS Seatbelt 的 `full`）——NTFS 硬链接可把已授权
+  workspace 文件 alias 到工作区外，Windows 后端只强制 ACL 可表达的剩余面，产品文案须明示；
+- **`windows-acl` runner 只接受单个 `--workspace` 根**——隔离子 Agent 的 git 提交在 Windows
+  上暂不可用（指挥模式多 Agent 隔离 worktree 功能性缺口）；
+- **symlink 物化需开发者模式 / admin 权限**——打包链路已改用 junction + 解引用复制绕开。
 
-所以 Windows 上的测试失败源于这些**产品事实**，不是测试写法。能平台无关表达的用例一律改表达式；
-否则用 `it.skipIf(process.platform === 'win32')` 并在注释里点名对应的产品事实。
+Windows 已纳入 CI 矩阵（`windows-latest`）。能平台无关表达的用例一律改表达式；
+平台相关的已知降级用 `it.skipIf(process.platform === 'win32')` 并在注释里点名对应降级项。
 
 ## 工作纪律
 

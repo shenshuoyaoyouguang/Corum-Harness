@@ -71,7 +71,9 @@ function detectWin32Shell(): string {
   if (cachedWin32Shell !== undefined) return cachedWin32Shell
   let resolved = 'powershell.exe'
   try {
-    const probe = spawnSync('pwsh.exe', ['-NoLogo', '-Command', 'exit 0'], {
+    // -NoProfile：探测只需 `exit 0`，跳过 profile 加载（慢的 PowerShell
+    // profile 可卡 3s，会冻结 Electron 主进程 IPC 与 UI）。-NoLogo 不跳 profile。
+    const probe = spawnSync('pwsh.exe', ['-NoProfile', '-Command', 'exit 0'], {
       stdio: 'ignore',
       timeout: 3000,
       windowsHide: true,
@@ -85,8 +87,20 @@ function detectWin32Shell(): string {
 }
 
 /**
+ * 判断 shell 路径是否为 PowerShell 变体（pwsh.exe / powershell.exe）。
+ * 取 basename（兼容 Windows `\` 与 POSIX `/` 路径分隔）小写比较——
+ * Windows PowerShell 5.1（powershell.exe）与 PowerShell 7+（pwsh.exe）均
+ * 不支持 POSIX 的 `-l` 登录参数（传 `-l` 会导致终端立即退出），需用 `-NoLogo`。
+ */
+function isPowerShellVariant(shell: string): boolean {
+  const base = shell.replace(/^.*[\\/]/, '').toLowerCase()
+  return base === 'pwsh.exe' || base === 'powershell.exe'
+}
+
+/**
  * 按 platform 分派默认登录 shell 与启动参数（导出供测试）。
- * - `SHELL` 显式设置时跨平台尊重（用户意图优先，行为与适配前一致：args `['-l']`）
+ * - `SHELL` 显式设置时跨平台尊重（用户意图优先）：PowerShell 变体用 `['-NoLogo']`
+ *   （不支持 POSIX `-l`），其余 shell（bash/zsh/fish 等）用 `['-l']` 登录参数
  * - win32（SHELL 未设置）：pwsh.exe 优先、缺失回落 powershell.exe，args `['-NoLogo']`
  * - POSIX（SHELL 未设置）：`/bin/zsh` + `['-l']`（登录 shell 让 PATH/别名生效）
  *
@@ -99,7 +113,10 @@ export function resolveDefaultShell(
   win32Shell: string,
 ): { shell: string; args: string[] } {
   if (shellEnv !== undefined && shellEnv.trim() !== '') {
-    return { shell: shellEnv, args: ['-l'] }
+    // PowerShell 变体不支持 POSIX `-l`（Windows PowerShell 5.1 会直接退出），
+    // 用 `-NoLogo` 兼容；其余 shell 保留 `-l` 登录参数让 PATH/别名生效。
+    const args = isPowerShellVariant(shellEnv) ? ['-NoLogo'] : ['-l']
+    return { shell: shellEnv, args }
   }
   if (platform === 'win32') {
     return { shell: win32Shell, args: ['-NoLogo'] }
@@ -123,18 +140,23 @@ export class CorumTerminalService extends TypertRemoteService {
 
   /**
    * spawn 一个登录 shell 会话。按 `process.platform` 分派默认 shell 与登录参数：
-   * `SHELL` 显式设置时跨平台尊重（args `['-l']`）；win32（SHELL 未设置）回退
-   * pwsh.exe（缺失回落 powershell.exe）+ `['-NoLogo']`；POSIX 回退 `/bin/zsh` + `['-l']`
-   * （登录 shell 让 PATH/别名等用户配置生效）。cwd 缺省回退 host 进程 cwd（IDE
-   * 场景即项目根）。
+   * `SHELL` 显式设置时跨平台尊重（PowerShell 变体 args `['-NoLogo']`，其余 `['-l']`，
+   * 且跳过 pwsh.exe 探测）；win32（SHELL 未设置）回退 pwsh.exe（缺失回落
+   * powershell.exe）+ `['-NoLogo']`；POSIX 回退 `/bin/zsh` + `['-l']`（登录 shell 让
+   * PATH/别名等用户配置生效）。cwd 缺省回退 host 进程 cwd（IDE 场景即项目根）。
    * @param cwd - 会话初始工作目录（绝对路径；不存在时 node-pty 抛错，信封
    *   自动包成 `{ ok: false, error }`）。
    * @returns 会话 id（后续 write/resize/poll/kill 的句柄）。
    */
   @Remote('create')
   async create(cwd?: string): Promise<{ id: string }> {
-    const win32Shell = process.platform === 'win32' ? detectWin32Shell() : ''
-    const { shell, args } = resolveDefaultShell(process.platform, process.env.SHELL, win32Shell)
+    // 仅当 SHELL 未设置且在 win32 时才探测 pwsh.exe——SHELL 显式设置时直接用
+    // SHELL 值，跳过 spawnSync 探测避免阻塞主进程 IPC/UI（慢 profile 可卡 3s）。
+    const shellEnv = process.env.SHELL
+    const needsDetect =
+      process.platform === 'win32' && (shellEnv === undefined || shellEnv.trim() === '')
+    const win32Shell = needsDetect ? detectWin32Shell() : ''
+    const { shell, args } = resolveDefaultShell(process.platform, shellEnv, win32Shell)
     const id = randomUUID()
     let proc: pty.IPty
     try {

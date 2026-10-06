@@ -77,7 +77,8 @@ pnpm shell:dev        # 开发态启动桌面应用
 pnpm pack             # 打包桌面应用（macOS .app/.dmg；Windows NSIS 见 docs/fork-delta.md §20）
 ```
 
-> **平台说明**：目标平台为 **macOS 与 Linux**（一等公民，全量能力）。**Windows 已完成适配**
+> **平台说明**：目标平台为 **macOS**（一等公民，全量能力）与 **Linux**（开发态支持；
+> 打包链路当前面向 macOS，Linux 打包 target 待支持）。**Windows 已完成适配**
 > （2026-10-06，见 [`docs/fork-delta.md`](docs/fork-delta.md) §20），开发态可启动、可产出
 > NSIS 安装包、`windows-latest` 已纳入 CI 矩阵。已知降级：
 > - **沙箱强制完备性为 `partial`**（vs macOS Seatbelt 的 `full`）——NTFS 硬链接可把已授权

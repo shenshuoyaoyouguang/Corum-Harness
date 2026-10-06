@@ -2275,7 +2275,8 @@ cordis.patch.yml`）。闭包登记：`packages/desktop/package.json` +
 ### 20.2 对 §1 台账的影响
 
 - **新增文件**：`corum-agent/src/win32-path-helpers.ts`、`corum-orchestration/src/win32-path-helpers.ts`
-  计入对应 fork 包的「corum 新增」列（重算时 `scripts/recheck-fork-delta.sh` 会自动纳入）。
+  是平台适配新增，**不在 §1 台账统计范围内**——§1 与 `scripts/recheck-fork-delta.sh` 只覆盖
+  6 个 session UI 包的逐字节差异，agent 包的新增文件非 fork 基线差异，仅在此登记。
 - **修改文件**：`legacy-index.ts`、`workspace-identity.ts`、`confinement.ts` 等的 win32 分支属
   「实质修改」增量，但**不改变既有跨平台差异的语义**——win32 分支在 macOS/Linux 上不可达。
 - **desktop 壳与脚本**（#9–#22）不在 §1 fork 包台账范围内（desktop 非 fork 包），仅在此登记。

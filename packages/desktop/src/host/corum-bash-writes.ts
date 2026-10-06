@@ -392,12 +392,17 @@ function isSpecialTarget(text: string): boolean {
 /**
  * 绝对路径判定（POSIX `/` 开头或 win32 盘符/UNC 开头）。
  *
- * 不读 `process.platform`：POSIX 路径不以盘符/UNC 开头，不会误判；本模块
- * 零 import、零全局状态（见文件头注），故内联正则而非复用
+ * fork 门控（P2）：盘符/UNC 正则仅在 win32 上生效 —— POSIX 上 `C:/foo` 是相对路径
+ * （`C:` 被当目录名，`/foo` 是其子路径），`//server/share` 亦非合法绝对路径；不加门控会让
+ * `shellWriteTargets` 把 `C:/foo` 当绝对路径解析，与 POSIX 语义矛盾（写目标基准错位）。
+ * POSIX 仅认 `/` 开头。
+ *
+ * 本模块零 import、零全局状态（见文件头注），故内联正则而非复用
  * `@corum/corum-agent` 的 `isWindowsAbsolutePath`——同源口径，注释互指。
  */
 function isAbsolutePathText(text: string): boolean {
-  return text.startsWith('/') || /^[A-Za-z]:[\\/]/.test(text) || /^[/\\]{2}/.test(text)
+  if (text.startsWith('/')) return true
+  return process.platform === 'win32' && (/^[A-Za-z]:[\\/]/.test(text) || /^[/\\]{2}/.test(text))
 }
 
 /**

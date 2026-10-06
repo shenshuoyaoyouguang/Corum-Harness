@@ -19,6 +19,11 @@ vi.mock('node-pty', () => ({
   spawn: vi.fn(),
 }))
 
+// mock node:child_process：detectWin32Shell 的 spawnSync 探测由用例断言调用次数
+vi.mock('node:child_process', () => ({
+  spawnSync: vi.fn(),
+}))
+
 // mock @deepseek-ai/dsh-typert-protocol：Remote 装饰器与 TypertRemoteService 基类
 // 在测试里无需真实装配，避免 cordis service 注册副作用。
 vi.mock('@deepseek-ai/dsh-typert-protocol', () => ({
@@ -32,6 +37,7 @@ vi.mock('@deepseek-ai/dsh-typert-protocol', () => ({
 }))
 
 import * as pty from 'node-pty'
+import { spawnSync } from 'node:child_process'
 import type { Context } from '@deepseek-ai/cordis'
 import { resolveDefaultShell, CorumTerminalService } from '../src/host/corum-terminal'
 
@@ -51,11 +57,32 @@ describe('resolveDefaultShell — 平台 shell 分派', () => {
       expect(r.args).not.toContain('-l')
     })
 
-    it('SHELL 显式设置时尊重该设置（跨平台一致，args 走 -l）', () => {
+    it('SHELL 显式设置时尊重该设置（非 PowerShell 变体 args 走 -l）', () => {
       const explicit = 'C:\\Program Files\\Git\\bin\\bash.exe'
       const r = resolveDefaultShell('win32', explicit, 'pwsh.exe')
       expect(r.shell).toBe(explicit)
       expect(r.args).toEqual(['-l'])
+    })
+
+    it('SHELL 显式设置为 pwsh.exe 时 args 走 -NoLogo（PowerShell 不支持 -l）', () => {
+      const r = resolveDefaultShell('win32', 'pwsh.exe', 'powershell.exe')
+      expect(r.shell).toBe('pwsh.exe')
+      expect(r.args).toEqual(['-NoLogo'])
+      expect(r.args).not.toContain('-l')
+    })
+
+    it('SHELL 显式设置为 powershell.exe 时 args 走 -NoLogo', () => {
+      const r = resolveDefaultShell('win32', 'powershell.exe', 'pwsh.exe')
+      expect(r.shell).toBe('powershell.exe')
+      expect(r.args).toEqual(['-NoLogo'])
+      expect(r.args).not.toContain('-l')
+    })
+
+    it('SHELL 显式设置为带路径的 pwsh.exe 时仍识别为 PowerShell 变体', () => {
+      const explicit = 'C:\\Program Files\\PowerShell\\7\\pwsh.exe'
+      const r = resolveDefaultShell('win32', explicit, 'powershell.exe')
+      expect(r.shell).toBe(explicit)
+      expect(r.args).toEqual(['-NoLogo'])
     })
 
     it('SHELL 空串视为未设置，走 win32 平台分派', () => {
@@ -106,6 +133,7 @@ describe('CorumTerminalService.create — spawn 错误信封', () => {
 
   beforeEach(() => {
     vi.mocked(pty.spawn).mockReset()
+    vi.mocked(spawnSync).mockClear()
     originalPlatform = process.platform
   })
 
@@ -128,7 +156,7 @@ describe('CorumTerminalService.create — spawn 错误信封', () => {
     )
   })
 
-  it('win32: SHELL 显式设置时信封含该 shell（不走平台探测）', async () => {
+  it('win32: SHELL 显式设置时信封含该 shell 且跳过平台探测（spawnSync 未调用）', async () => {
     Object.defineProperty(process, 'platform', { value: 'win32', configurable: true })
     vi.stubEnv('SHELL', 'pwsh.exe')
     vi.mocked(pty.spawn).mockImplementation(() => {
@@ -137,5 +165,7 @@ describe('CorumTerminalService.create — spawn 错误信封', () => {
     const ctx = { emit: vi.fn() } as unknown as Context
     const svc = new CorumTerminalService(ctx)
     await expect(svc.create()).rejects.toThrow(/cannot spawn shell pwsh\.exe: Error: spawn failed/)
+    // SHELL 显式设置时应跳过 detectWin32Shell 探测，不调用 spawnSync
+    expect(spawnSync).not.toHaveBeenCalled()
   })
 })

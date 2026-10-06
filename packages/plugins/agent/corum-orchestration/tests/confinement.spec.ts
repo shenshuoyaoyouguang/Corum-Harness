@@ -136,6 +136,12 @@ describe('isPathInside / absolutePathsIn — 词法边界判定', () => {
   it('相对路径不参与判定（子会话 cwd 就是 worktree，相对路径天然在界内）', () => {
     expect(absolutePathsIn('echo hi > out.txt')).toEqual([])
   })
+
+  // P3 回归：POSIX 上 `//server/share` 是相对路径（`//` 非合法 UNC），UNC 提取须 win32 门控，
+  // 不得进入写目标候选集（与 POSIX 正则 `!raw.startsWith('//')` 口径一致）。
+  it.skipIf(process.platform === 'win32')('POSIX 上 //server/share 不被当 UNC 提取', () => {
+    expect(absolutePathsIn('rm -rf //server/share/x')).toEqual([])
+  })
 })
 
 describe('confinementGuard — 隔离子会话的写边界（修法 2）', () => {
@@ -479,6 +485,22 @@ describe('★ win32 路径提取（P0-2，安全面）', () => {
 
     it.skipIf(!isWin32)('POSIX 路径仍被提取（不因 win32 增补而漏掉 POSIX 分支）', () => {
       expect(absolutePathsIn('rm -rf /tmp/x')).toContain(resolve('/tmp/x'))
+    })
+
+    // P1 回归：重定向目标 `>D:\path` 旧正则前缀缺 `>`，写操作逃逸硬拒。
+    it.skipIf(!isWin32)('提取重定向目标 >D:\\path（`>` 紧贴盘符，无空格）', () => {
+      expect(absolutePathsIn('echo hi >D:\\main\\x')).toContain(resolve('D:\\main\\x'))
+    })
+
+    it.skipIf(!isWin32)('提取重定向目标 >>D:\\path / 2>D:\\path（覆盖各重定向形态）', () => {
+      expect(absolutePathsIn('echo hi >>D:\\main\\x')).toContain(resolve('D:\\main\\x'))
+      expect(absolutePathsIn('echo hi 2>D:\\main\\x')).toContain(resolve('D:\\main\\x'))
+    })
+
+    // P1 回归：含空格的引号路径旧正则在空格处截断（只提取 `D:\\my`），越界写漏判。
+    it.skipIf(!isWin32)('提取引号内含空格的盘符路径（不在空格处截断）', () => {
+      expect(absolutePathsIn('rm -rf "D:\\my path\\x"')).toContain(resolve('D:\\my path\\x'))
+      expect(absolutePathsIn("rm -rf 'D:\\my path\\x'")).toContain(resolve('D:\\my path\\x'))
     })
   })
 

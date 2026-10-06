@@ -287,6 +287,27 @@ describe('win32 路径辅助 — stripLeadingSep（平台分派）', () => {
     expect(stripLeadingSep('C:/')).toBe('C:/')
   })
 
+  it.skipIf(process.platform !== 'win32')('win32: UNC 路径不剥前导（保留完整性）', () => {
+    expect(stripLeadingSep('\\\\server\\share')).toBe('\\\\server\\share')
+    expect(stripLeadingSep('//server/share')).toBe('//server/share')
+  })
+
+  it.skipIf(process.platform !== 'win32')('win32: corumFs 风格相对路径剥前导 /（关键修复）', () => {
+    // 客户端总是发送 / 前缀的相对路径；若不剥，path.resolve(root, '/sub')
+    // 在 win32 上解析到盘根 C:\sub，导致逃逸校验抛错、应用完全不可用。
+    // 注：//foo 是 UNC 形态（^[/\\]{2}），由 isWindowsAbsolutePath 判定原样
+    // 返回，不在此处剥——见上方 UNC 用例。
+    expect(stripLeadingSep('/sub')).toBe('sub')
+    expect(stripLeadingSep('/sub/file.ts')).toBe('sub/file.ts')
+    expect(stripLeadingSep('/')).toBe('')
+  })
+
+  it.skipIf(process.platform !== 'win32')('win32: 无前导 / 原样返回', () => {
+    expect(stripLeadingSep('foo/bar')).toBe('foo/bar')
+    expect(stripLeadingSep('sub\\file.ts')).toBe('sub\\file.ts')
+    expect(stripLeadingSep('')).toBe('')
+  })
+
   it.skipIf(process.platform === 'win32')('POSIX: 剥前导 /', () => {
     expect(stripLeadingSep('/foo')).toBe('foo')
     expect(stripLeadingSep('//foo')).toBe('foo')
@@ -316,6 +337,21 @@ describe('win32 路径辅助 — 文件面归一组合（isRootPath + stripLeadi
 
   it.skipIf(process.platform !== 'win32')('win32: D:\\work\\foo 判为绝对路径', () => {
     expect(isWindowsAbsolutePath('D:\\work\\foo')).toBe(true)
+  })
+
+  it.skipIf(process.platform !== 'win32')('win32: corumFs 风格相对路径剥前导 /（关键修复）', () => {
+    // 客户端发送 /sub、/sub/file.ts，归一后应为 sub、sub/file.ts，
+    // 使 path.resolve(root, 'sub') 正确拼接到 root 下而非盘根。
+    expect(normalize('/sub')).toBe('sub')
+    expect(normalize('/sub/file.ts')).toBe('sub/file.ts')
+    expect(normalize('/dir/nested/file.ts')).toBe('dir/nested/file.ts')
+  })
+
+  it.skipIf(process.platform !== 'win32')('win32: corumFs 根 / 归一为空串（list("/") 可用）', () => {
+    // list('/') 在 win32 上不应解析到 C:\ 被拒。
+    // isRootPath('/') 在 win32 上返回 false（POSIX 根），故走 stripLeadingSep
+    // 分支，剥前导 / 后得空串；path.resolve(root, '') === root，列根目录本身。
+    expect(normalize('/')).toBe('')
   })
 
   it('空串归一为 .（平台无关）', () => {

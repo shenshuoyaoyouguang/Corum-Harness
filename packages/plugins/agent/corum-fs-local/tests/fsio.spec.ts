@@ -683,7 +683,7 @@ describe('writeFileAtomic — temp-file safety', () => {
     expect((await readdir(dir)).filter(n => n.includes('.tmp'))).toEqual([])
   })
 
-  // win32 专例：NTFS DACL（自由访问控制列表）是 Windows 原生权限模型，POSIX 无对等概念
+  // win32 专例：NTFS DACL（自主访问控制列表）是 Windows 原生权限模型，POSIX 无对等概念
   // （POSIX 用 mode 位，见上方 posixModes 注释）。DACL 保留断言只在 win32 宿主上有意义。
   it.skipIf(process.platform !== 'win32')('protects staged content with the existing target DACL and preserves it after replacement', async () => {
     const file = join(dir, 'protected.txt')

@@ -46,3 +46,5 @@ if ($ForwardArgs) {
 } else {
     & node lib/cli.js
 }
+# 透传 node 退出状态：失败的 --smoke 等运行不应看起来成功
+exit $LASTEXITCODE

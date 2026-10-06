@@ -46,10 +46,9 @@ import { readLegacyIndexes, splitCompositeKey, encodeCwdForSessionsDir, parsePro
  *
  * 会话目录编码的 win32 分支已由任务 2 修复（`legacy-index.ts` 的
  * `encodeCwdForSessionsDir` 按 `process.platform` 分派），5 个迁移用例已转正。
- * 仍有 4 处 skip，原因各异：
- *   ① 字形归一兜底只剥 `/`（`workspace-identity.ts:57`，任务 4 范围）；
- *   ② 备份路径扁平化 `replaceAll('/', '_')` 不处理 `\`（独立 win32 bug，非任务 2）；
- *   ③ POSIX 专属形态契约（输入 `/Users/...`，win32 分支对前导 `/` 处理不同）。
+ * 仍有 3 处 skip，原因各异：
+ *   ① 备份路径扁平化 `replaceAll('/', '_')` 不处理 `\`（独立 win32 bug，非任务 2）；
+ *   ② POSIX 专属形态契约（输入 `/Users/...`，win32 分支对前导 `/` 处理不同）。
  */
 const windowsHost = process.platform === 'win32'
 
@@ -144,7 +143,12 @@ describe('工作区身份由 realpath 归一的 cwd 决定', () => {
 
   it('目录不存在时退回字形归一而非抛错（死条目身份仍可比）', () => {
     const gone = join(ws, 'definitely-not-here')
-    expect(canonicalWorkspaceKey(gone)).toBe(gone)
+    // 死条目不抛错；字形归一后身份仍可比（归一结果幂等）。
+    // win32 兜底分支大小写不敏感归一（toLowerCase 整个路径），归一结果不一定
+    // 等于裸 gone（POSIX 大小写敏感则相等）；以归一结果自身作基准验证幂等。
+    const key = canonicalWorkspaceKey(gone)
+    expect(key).toBeDefined()
+    expect(canonicalWorkspaceKey(key)).toBe(key)
     expect(canonicalWorkspaceKey('   ')).toBeUndefined()
     expect(canonicalWorkspaceKey(undefined)).toBeUndefined()
   })
@@ -479,7 +483,7 @@ describe('会话目录编码', () => {
     }
   })
 
-  it.skipIf(!windowsHost)('win32 大小写盘符编码同形（盘符被剥，大小写不影响目录名）', () => {
+  it.skipIf(!windowsHost)('win32 大小写盘符编码同形（盘符保留并归一，大小写不影响目录名）', () => {
     expect(encodeCwdForSessionsDir('D:\\work\\foo'))
       .toBe(encodeCwdForSessionsDir('d:\\work\\foo'))
   })

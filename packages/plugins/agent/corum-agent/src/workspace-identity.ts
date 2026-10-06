@@ -61,7 +61,11 @@ export function canonicalWorkspaceKey(cwd: string | undefined): string | undefin
       const collapsed = win32.normalize(trimmed)
       // 保留盘符根 `D:\`；其余去尾分隔符（normalize 通常已去，显式防御双保险）。
       const noTrailing = isWindowsRoot(collapsed) ? collapsed : collapsed.replace(/[\\/]+$/, '')
-      return normalizeDriveLetter(noTrailing)
+      // win32 文件系统大小写不敏感：整个路径小写后归一盘符大写，
+      // 否则 `D:\Work\Foo` 与 `D:\work\foo`（同一目录的不同大小写拼写）会被
+      // 判成两个工作区，身份失真扩散到 task 泳道匹配与互斥门禁（P2）。
+      // 仅在 win32 兜底分支（目录不可达）做此归一，POSIX 大小写敏感不变。
+      return normalizeDriveLetter(noTrailing.toLowerCase())
     }
     // POSIX：折叠重复分隔符 + 去尾 `/` + NFC 归一。
     const collapsed = normalize(trimmed).normalize('NFC')

@@ -493,17 +493,31 @@ export function absolutePathsIn(command: string): string[] {
   // 正则口径与任务 1 的 `win32-path-helpers` 完全一致（`^[A-Za-z]:[\\/]` 盘符、`^[/\\]{2}` UNC）；
   // `cdTargetsOf` 的单 arg 判定复用 `isWindowsAbsolutePath`，此处提取面必须用正则扫文本。
   //
-  // 盘符路径：`D:\target`、`C:/target`（分隔符可混写）
-  for (const match of command.matchAll(/(?:^|[\s='"])([A-Za-z]:[\\/][^\s'"|;&()<>]*)/g)) {
+  // 引号内的盘符路径（含空格）：`"D:\my path\x"` / `'D:\my path\x'`
+  // 由来（P1）：旧正则的路径段 `[^\s'"|;&()<>]*` 在空格处截断，含空格的引号路径只提取前半段
+  // （`D:\my`）⇒ 越界写目标漏判（安全红线：漏判优先于误判）。此处完整提取引号内路径，
+  // 引号本身剥离（不进 path.resolve）；盘符分支前缀不再含 `"`/`'`，避免重复与截断噪音候选。
+  for (const match of command.matchAll(/"([A-Za-z]:[\\/][^"]*)"|'([A-Za-z]:[\\/][^']*)'/g)) {
+    const raw = match[1] ?? match[2]
+    if (raw !== undefined) found.add(path.resolve(raw))
+  }
+  // 盘符路径：`D:\target`、`C:/target`（分隔符可混写）；含重定向目标 `>D:\target`（`>` 前缀，
+  // 覆盖 `>D:\x` / `>>D:\x` / `2>D:\x` 等形态）。前缀不含 `"`/`'`：引号内路径由上一循环完整处理。
+  for (const match of command.matchAll(/(?:^|[\s=>])([A-Za-z]:[\\/][^\s'"|;&()<>]*)/g)) {
     const raw = match[1]
     if (raw !== undefined) found.add(path.resolve(raw))
   }
   // UNC 路径：`\\server\share\target`、`//server/share/target`（双分隔符开头，可混写）
   // 注意：POSIX 正则已排除 `//` 开头（POSIX 下 `//` 非合法路径），此处 UNC 正则把 `//server/share`
   // 作为 UNC 提取（win32 合法形态）；Set 去重保证不重复。
-  for (const match of command.matchAll(/(?:^|[\s='"])([/\\]{2}[^\s'"|;&()<>]*)/g)) {
-    const raw = match[1]
-    if (raw !== undefined) found.add(path.resolve(raw))
+  // fork 门控（P3）：仅在 win32 上提取 UNC —— POSIX 上 `//server/share` 是相对路径（`//` 非
+  // 合法 UNC），既有 POSIX 正则已用 `!raw.startsWith('//')` 排除 `//` 前缀；此处须同样门控，
+  // 否则 POSIX 上 `//server/share` 进入写目标候选集，与 POSIX 分支口径矛盾。
+  if (process.platform === 'win32') {
+    for (const match of command.matchAll(/(?:^|[\s='"])([/\\]{2}[^\s'"|;&()<>]*)/g)) {
+      const raw = match[1]
+      if (raw !== undefined) found.add(path.resolve(raw))
+    }
   }
   // 家目录简写
   if (/(^|[\s='"])~(?=[/\s'"]|$)/.test(command) || /\$HOME\b|\$\{HOME\}/.test(command)) {

@@ -23,8 +23,8 @@
  */
 
 import { createWriteStream, existsSync } from 'node:fs'
-import { mkdir, readFile, rename, rm, writeFile } from 'node:fs/promises'
-import { dirname, join, resolve } from 'node:path'
+import { mkdir, readdir, readFile, rename, rm, writeFile } from 'node:fs/promises'
+import { dirname, join, resolve, sep } from 'node:path'
 import { pipeline } from 'node:stream/promises'
 import { spawn } from 'node:child_process'
 
@@ -34,13 +34,17 @@ const DESKTOP_ROOT = resolve(import.meta.dirname, '..')
 const NODE_DIR = join(DESKTOP_ROOT, 'build', 'node')
 
 const DEFAULT_VERSION = 'v26.4.0'
-const DEFAULT_PLATFORM = 'darwin'
-const DEFAULT_ARCH = 'arm64'
+/**
+ * 默认平台/架构按当前进程平台选择：win32 → win32/x64，其余 → darwin/arm64。
+ * 这样 `pack:node`（不传参数）在 win32 上下载 win-x64 运行时，在 darwin 上仍 arm64（向后兼容）。
+ */
+const DEFAULT_PLATFORM = process.platform === 'win32' ? 'win32' : 'darwin'
+const DEFAULT_ARCH = process.platform === 'win32' ? 'x64' : 'arm64'
 
 /**
  * 解析 CLI 参数与环境变量，确定目标平台/架构/版本。
  *
- * 优先级：CLI 参数 > 环境变量 > 默认值（darwin/arm64，向后兼容）。
+ * 优先级：CLI 参数 > 环境变量 > 默认值（按 process.platform：win32→win32/x64，其余→darwin/arm64）。
  * @param {string[]} argv - process.argv.slice(2)
  * @returns {{ platform: string, arch: string, version: string | undefined, help: boolean }}
  */
@@ -86,8 +90,8 @@ const USAGE = `Usage: node packages/desktop/scripts/fetch-node.mjs [node-version
 
 Options:
   [node-version]   目标 Node 版本（如 v26.4.0），缺省取 ${DEFAULT_VERSION}
-  --platform=<p>   目标平台：darwin（默认）| win32
-  --arch=<a>       目标架构：arm64（默认）| x64
+  --platform=<p>   目标平台：win32 | darwin（默认按 process.platform）
+  --arch=<a>       目标架构：x64 | arm64（默认按 process.platform）
   --help, -h       打印本用法后退出
 
 Environment:
@@ -95,7 +99,7 @@ Environment:
   PLATFORM         目标平台（被 --platform 覆盖）
   ARCH             目标架构（被 --arch 覆盖）
 
-默认（不传参数）：darwin/arm64 + .tar.gz + tar -xzf + mv（向后兼容）`
+默认（不传参数）：按 process.platform 选 win32/x64 或 darwin/arm64（向后兼容）`
 
 async function run(label, command, args) {
   await new Promise((resolveRun, reject) => {
@@ -118,8 +122,13 @@ async function extractZip(zipPath, destDir) {
   const { unzipSync } = await import('fflate')
   const buf = await readFile(zipPath)
   const entries = unzipSync(new Uint8Array(buf))
+  const destRoot = resolve(destDir)
   for (const [relPath, bytes] of Object.entries(entries)) {
-    const target = join(destDir, relPath)
+    const target = resolve(destDir, relPath)
+    // zip-slip 防护：拒绝逃逸 destDir 的条目（如 ../scripts/pack-app.mjs）
+    if (target !== destRoot && !target.startsWith(destRoot + sep)) {
+      throw new Error(`fetch-node: zip entry escapes destDir (${relPath}) — refusing to extract`)
+    }
     if (relPath.endsWith('/')) {
       // 目录条目
       await mkdir(target, { recursive: true })
@@ -127,6 +136,26 @@ async function extractZip(zipPath, destDir) {
       // 文件条目：先确保父目录存在再写入
       await mkdir(dirname(target), { recursive: true })
       await writeFile(target, bytes)
+    }
+  }
+}
+
+/**
+ * 把 win32 Node zip 解压出的可执行文件（node.exe / npm.cmd / npx.cmd …）从归档根移入 bin/。
+ *
+ * win32 归档把 node.exe 放在 `node-v{ver}-win-{arch}/` 根目录（无 bin/ 子目录），
+ * 但 launcher（main.ts hostNode）期望 `Resources/node/bin/node[.exe]`（与 darwin 布局对齐）。
+ * 解压重命名为 build/node/ 后调用本函数把 .exe/.cmd 移入 build/node/bin/。
+ * @param {string} nodeDir - 解压重命名后的 node 运行时目录（build/node）
+ */
+async function relocateWin32Binaries(nodeDir) {
+  const binDir = join(nodeDir, 'bin')
+  await mkdir(binDir, { recursive: true })
+  for (const entry of await readdir(nodeDir)) {
+    if (entry === 'bin') continue
+    // 移入 bin/ 的：Windows 可执行文件与 cmd 脚本（node.exe / npm.cmd / npx.cmd / corepack.cmd）
+    if (/\.(exe|cmd|ps1)$/i.test(entry)) {
+      await rename(join(nodeDir, entry), join(binDir, entry))
     }
   }
 }
@@ -146,7 +175,9 @@ async function main() {
   await rm(NODE_DIR, { recursive: true, force: true })
   await mkdir(join(DESKTOP_ROOT, 'build'), { recursive: true })
 
-  const name = `node-${version}-${platform}-${arch}`
+  // Node.js 官方归档命名：win32 平台用 `win`（如 node-v26.4.0-win-x64.zip），不是 `win32`
+  const archivePlatform = platform === 'win32' ? 'win' : platform
+  const name = `node-${version}-${archivePlatform}-${arch}`
   const mirror = (process.env.NODE_MIRROR ?? 'https://nodejs.org/dist').replace(/\/$/, '')
   const url = `${mirror}/${version}/${name}${ext}`
   const archivePath = join(DESKTOP_ROOT, 'build', `${name}${ext}`)
@@ -176,8 +207,10 @@ async function main() {
     // darwin / POSIX：mv 重命名
     await run('rename node dir', 'mv', [extractedDir, NODE_DIR])
   } else {
-    // win32：fs.rename 重命名（不依赖外部 mv）
+    // win32：fs.rename 重命名（不依赖外部 mv），再把 node.exe 等移入 bin/
+    // （win32 zip 把可执行文件放在归档根，launcher 期望 bin/node 布局，与 darwin 对齐）
     await rename(extractedDir, NODE_DIR)
+    await relocateWin32Binaries(NODE_DIR)
   }
   console.log('[fetch-node] node runtime staged at', NODE_DIR)
 }
