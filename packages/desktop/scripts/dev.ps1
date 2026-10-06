@@ -30,7 +30,11 @@ Set-Location -LiteralPath $packageRoot
 
 # patch vendored Electron.app 的 Info.plist 加中文 localization（macOS 专有）。
 # win32 上脚本自带平台守卫会 no-op；外部命令失败不中断脚本（对应 dev.sh 的 `|| true`）。
-& node scripts/patch-electron-locales.mjs
+try {
+    & node scripts/patch-electron-locales.mjs
+} catch {
+    # patch 失败不中断 dev 启动（对应 dev.sh 的 || true）
+}
 
 # 设置环境变量（尊重已有值，对应 dev.sh 的 ${VAR:-default} 语义）
 if (-not $env:CORUM_HOME) {

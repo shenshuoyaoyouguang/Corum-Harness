@@ -843,7 +843,7 @@ export function selectUnionCandidates(entries: PorcelainEntry[], options: UnionS
   // 正常给相对路径，但盘符/UNC 绝对路径不应拼到 base）。正则与本模块
   // isAbsolutePathText 同源（零 import 约束，见文件头注）。
   const joinRoot = (rel: string): string => {
-    if (/^[A-Za-z]:[\\/]/.test(rel) || /^[/\\]{2}/.test(rel)) return rel
+    if (process.platform === 'win32' && (/^[A-Za-z]:[\\/]/.test(rel) || /^[/\\]{2}/.test(rel))) return rel
     return rel.startsWith('/') ? base + rel : `${base}/${rel}`
   }
   const out: string[] = []
