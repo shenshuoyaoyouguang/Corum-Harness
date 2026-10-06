@@ -64,6 +64,9 @@ doc/
 .trae/
 *.pen
 
+# ── 设计稿临时目录（本地保留、不再跟踪）──
+.corum-tmp/
+
 # ── 打包产物（防 auto-commit 卷入大文件，2026-10-05 实测 126MB tgz 超 GitHub 上限）──
 *.tgz
 corum-harness-*.tgz
