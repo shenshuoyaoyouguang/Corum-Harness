@@ -15,10 +15,6 @@ let cdp, sessionId
 async function evaluate(expression) { const { result, exceptionDetails } = await cdp.send('Runtime.evaluate', { expression, returnByValue: true, awaitPromise: true }, sessionId); if (exceptionDetails) throw new Error('eval failed: ' + JSON.stringify(exceptionDetails.exception?.description ?? exceptionDetails.text)); return result.value }
 async function shot(name) { const { data } = await cdp.send('Page.captureScreenshot', { format: 'png' }, sessionId); const f = join(OUT, name); writeFileSync(f, Buffer.from(data, 'base64')); console.log('shot:', f); return f }
 const sleep = (ms) => new Promise(r => setTimeout(r, ms))
-async function clickAt(x, y) {
-  await cdp.send('Input.dispatchMouseEvent', { type: 'mousePressed', x, y, button: 'left', clickCount: 1 }, sessionId)
-  await cdp.send('Input.dispatchMouseEvent', { type: 'mouseReleased', x, y, button: 'left', clickCount: 1 }, sessionId)
-}
 // 触发 React 合成事件点击（.click() 在 drag 区/委托下不可靠；直接派发
 // React 识别的 click）。用 data-menu 精确定位，与文本解耦。
 async function menuClick(key) {

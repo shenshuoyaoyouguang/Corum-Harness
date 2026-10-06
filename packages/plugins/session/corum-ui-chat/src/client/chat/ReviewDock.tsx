@@ -24,11 +24,6 @@ import type { ReviewSource } from './review-source.ts'
 import { NS } from '../locale.ts'
 import css from './ReviewCard.module.css'
 
-/** `ctx.corumEditor` 的能力收窄（与 apply.ts 同款，dev-conventions §2.4 红线 2/3）。 */
-interface EditorOpenCapable {
-  openFile?: (absolutePath: string) => Promise<{ ok: boolean; error?: string }>
-}
-
 /** 槽位注入面：按会话解析出的 Review 数据 + 打开 diff 动作。 */
 export interface ReviewDockInjected {
   review: ReviewSource

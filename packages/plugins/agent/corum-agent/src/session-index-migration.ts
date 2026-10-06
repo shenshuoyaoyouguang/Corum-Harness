@@ -29,7 +29,7 @@
 
 import { cpSync, existsSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
-import { corumHome, readSessionIndex, writeSessionIndex, sessionIndexPath } from './session-index.ts'
+import { corumHome, readSessionIndex } from './session-index.ts'
 import type { SessionIndexEntry } from './session-index.ts'
 // 工作区身份（L0 助手）：项目模式剥离后由 workspace-identity.ts 承接。
 import { canonicalWorkspaceKey } from './workspace-identity.ts'

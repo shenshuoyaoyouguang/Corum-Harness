@@ -33,7 +33,7 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore } from 'react'
 import { createPortal } from 'react-dom'
 import { Bell, CircleAlert, CircleCheck, Hourglass, Info, X } from 'lucide-react'
-import type { BellEdge, BellPosition, CorumNotification, NotificationStore, NotificationTone } from './notifications.ts'
+import type { BellPosition, CorumNotification, NotificationStore, NotificationTone } from './notifications.ts'
 import css from './NotificationHost.module.css'
 
 /** 未处理自动收起的等待时长（用户定调 5s）。 */

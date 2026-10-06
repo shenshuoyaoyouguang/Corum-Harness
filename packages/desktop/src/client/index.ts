@@ -27,7 +27,6 @@ import type { EditorApiRef, EditorColumnInjected } from './editor/EditorColumn.t
 import { createCorumEditor, createEditorReadySource, type CorumEditorService } from './editor/corum-editor.ts'
 import { createFontPrefs, setFontPrefsInstance, type FontPrefsStore } from './editor/font-prefs.ts'
 import { createCorumFsClient, type CorumFsClient } from './editor/corum-fs-client.ts'
-import type { FsEntry } from './editor/ExplorerPane.tsx'
 
 /** Required services: none — this is the wire root; the code-editor view registers lazily below. */
 export const inject: string[] = []

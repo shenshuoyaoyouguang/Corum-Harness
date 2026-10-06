@@ -1,0 +1,16 @@
+{
+  "$schema": "https://raw.githubusercontent.com/oxc-project/oxc/main/npm/oxlint/configuration_schema.json",
+  "categories": {
+    "correctness": "warn"
+  },
+  "rules": {
+    "no-useless-spread": "off",
+    "no-useless-fallback-in-spread": "off",
+    "no-irregular-whitespace": "off",
+    "no-control-regex": "off",
+    "no-unused-expressions": "off",
+    "prefer-string-starts-ends-with": "off",
+    "no-useless-escape": "off",
+    "no-new-array": "off"
+  }
+}

@@ -66,11 +66,12 @@ jobs:
         run: pnpm typecheck
         timeout-minutes: 15
 
-      # (Phase 1.3) oxlint：零配置秒级 lint。初始 continue-on-error=true —— 先看全仓
-      # lint 面（correctness 类只 warn 不阻断），triage 修复后删 continue-on-error 让它
-      # 真正阻断、并把 oxlint 钉成 devDep 以可复现。配置见根 oxlintrc.json。
+      # (Phase 1.3) oxlint：钉成 devDep（可复现），配置见根 .oxlintrc.json。
+      # correctness 类只 warn；no-unused-vars 面大（~112，多为字节一致面继承的上游
+      # 死代码，本仓不能改否则破 fork-drift guard），故 lint 保持 advisory
+      # （continue-on-error=true）。噪规则已在 .oxlintrc.json 抑制。corum 自有死代码已清。
       - name: Lint (oxlint)
-        run: npx -y oxlint@latest packages/ scripts/
+        run: pnpm exec oxlint packages/ scripts/
         timeout-minutes: 5
         continue-on-error: true
 

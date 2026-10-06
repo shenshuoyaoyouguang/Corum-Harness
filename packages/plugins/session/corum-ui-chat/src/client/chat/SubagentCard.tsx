@@ -19,7 +19,7 @@
 import { memo, useEffect, useRef, useState } from 'react'
 import { AlertTriangle, ArrowRight, Ban, Bot, Check, ChevronDown, ChevronUp, Cpu, FileText, GitBranch, GitFork, Loader, Search, Wrench, X } from 'lucide-react'
 import { subagentProgressStateOf, subagentStateChipTone } from '@corum/corum-api-remotes/corum-events'
-import type { SubagentChangeSummary, SubagentDelegationRole, SubagentStopReason, SubagentTodoItem } from '@corum/corum-api-remotes/corum-events'
+import type { SubagentDelegationRole, SubagentStopReason, SubagentTodoItem } from '@corum/corum-api-remotes/corum-events'
 import type { ChatNodeViewProps } from '../contract/slots.ts'
 
 /**
@@ -60,21 +60,6 @@ import { chatRuntimeRef, subagentChildOf, subagentChildSubscribe, subagentProgre
 import { SubagentPlan } from './SubagentPlan.tsx'
 import css from './SubagentCard.module.css'
 import { SubagentChanges } from './SubagentChanges.tsx'
-
-/** 子会话进度 RPC 返回形（与 host getChildSessionProgress 对齐）。 */
-interface ChildProgressValue {
-  progress?: {
-    turn: number
-    step: number
-    currentAction?: string
-    done: boolean
-    stopReason?: string
-    /** 中途失去运行（进程退出/被丢弃）——宿主补的诚实终态标记（2026-09-12）。 */
-    interrupted?: boolean
-    lastActive: number
-    todos?: readonly SubagentTodoItem[]
-  }
-}
 
 /** 合法化跨包 JSON 面的 stopReason（不认识的字符串不当成功）。 */
 const VALID_STOP_REASONS = new Set(['completed', 'aborted', 'error', 'max-tokens', 'refusal'])

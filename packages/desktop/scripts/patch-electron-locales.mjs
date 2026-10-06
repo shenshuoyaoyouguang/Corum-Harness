@@ -12,8 +12,7 @@
  */
 import { execFileSync } from 'node:child_process'
 import { existsSync } from 'node:fs'
-import { join, resolve, dirname } from 'node:path'
-import { fileURLToPath } from 'node:url'
+import { join, dirname } from 'node:path'
 import { createRequire } from 'node:module'
 
 // macOS 专有脚本：依赖 plutil 修改 vendored Electron.app 的 Info.plist。

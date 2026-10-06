@@ -75,7 +75,6 @@ export const ChatNodeSeat = memo(function ChatNodeSeat({
     && processWindowReady
     && routedNode.kind === 'assistant-step'
     && routedNode.data.step === processSpec.answerStep
-  const ownsDisclosure = routedNode?.kind === 'turn-process' || processAnswer
   // 工具调用不再折叠（2026-08-29）：foldable 恒为 false，工具调用始终展开显示
   // fork（corum）：官方 0.1.3 把 processLayout 判定搬进 ChatTurnProcessProjector，
   // corum 仍钉 foldable=false（死代码面随官方投影器内聚而缩小，P0-12 缓解）。

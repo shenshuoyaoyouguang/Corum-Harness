@@ -32,9 +32,8 @@
  * @module @corum/corum-memory/client/MemorySettingsPage
  */
 import { useCallback, useEffect, useState } from 'react'
-import type { ConnectionHandle } from '@deepseek-ai/dsh-client-connection/client'
 import {
-  Badge, Button, Divider, ErrorNote, GroupCard, Hint, Row, RowDesc, RowLabel, Segmented, Select, Toggle, fmtAbsolute,
+  Badge, Button, Divider, ErrorNote, GroupCard, Hint, Row, RowDesc, RowLabel, Select, Toggle, fmtAbsolute,
 } from './ui.tsx'
 
 /* ── 与 host 同形的投影类型（client bundle 独立，不 import host 值）── */

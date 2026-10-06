@@ -27,7 +27,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react'
 import type { ReactNode } from 'react'
 import {
-  Cable, ChevronDown, ChevronLeft, Cpu, Download, FolderOpen, KeyRound, Link2, LoaderCircle, Puzzle, Search, Server,
+  Cable, ChevronDown, ChevronLeft, Cpu, Download, FolderOpen, KeyRound, Link2, Puzzle, Search, Server,
   ServerCog, Sparkles, Star, Terminal, X,
 } from 'lucide-react'
 import { getAllRegisteredSlots, getSlotMeta } from '@corum/corum-ui-base/client'

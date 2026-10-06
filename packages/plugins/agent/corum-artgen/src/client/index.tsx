@@ -119,15 +119,6 @@ interface Txt2ImgJob {
   error?: string
 }
 
-/** 下载进度（引擎 / 模型下载共用）。 */
-interface DownloadProgress {
-  percent: number
-  totalBytes: number
-  downloadedBytes: number
-  status: string
-  error?: string
-}
-
 function makeCall(connection: ConnectionHandle) {
   return async function call<T>(method: string, args: Record<string, unknown>): Promise<T> {
     const result = await connection.rpc.call('/api', `corumArtGen/${method}`, { args })
@@ -220,7 +211,7 @@ function ArtGenSection({ call, subscribeProgress, subscribeJobProgress }: {
 }): ReactNode {
   const [status, setStatus] = useState<ArtGenStatus | null>(null)
   const [error, setError] = useState<string | null>(null)
-  const [busy, setBusy] = useState(false)
+  const [, setBusy] = useState(false)
 
   // 引擎下载
   const [dlEngine, setDlEngine] = useState(false)
