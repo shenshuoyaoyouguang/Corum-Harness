@@ -304,12 +304,20 @@ async function topUpOfficialPackagesFromWorkspace() {
   // 工具钉版，不如不让它上船）。
   const isTestTooling = (name) => /-testkit$/.test(name)
   for (const entry of await readdir(wsPnpm)) {
-    const m = /^@deepseek-ai\+([a-z0-9-]+)@/.exec(entry)
-    if (m === null) continue
-    const name = `@deepseek-ai/${m[1]}`
-    if (isTestTooling(name)) continue
-    const dir = join(wsPnpm, entry, 'node_modules', '@deepseek-ai', m[1])
-    if (existsSync(join(dir, 'package.json'))) wanted.set(name, dir)
+    if (!entry.startsWith('@deepseek-ai+')) continue
+    // pnpm v11 的 .pnpm 目录名会截断长包名（如 dsh-session-query → dsh-session-qu），
+    // 不能从目录名解析包名。改为扫描 entry/node_modules/@deepseek-ai/ 子目录，
+    // 子目录名即为完整包名——这同时覆盖了嵌套依赖（dsh-base 的 dsh-agent-loop 等
+    // 只住在 dsh-base 的 .pnpm node_modules 里、不在 .pnpm 顶层有独立条目的包）。
+    const scopedDir = join(wsPnpm, entry, 'node_modules', '@deepseek-ai')
+    if (!existsSync(scopedDir)) continue
+    for (const pkg of await readdir(scopedDir)) {
+      const name = `@deepseek-ai/${pkg}`
+      if (isTestTooling(name)) continue
+      if (wanted.has(name)) continue
+      const dir = join(scopedDir, pkg)
+      if (existsSync(join(dir, 'package.json'))) wanted.set(name, dir)
+    }
   }
   // ② 缺什么补什么
   let added = 0
