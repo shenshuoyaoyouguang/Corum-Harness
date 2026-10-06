@@ -60,7 +60,11 @@ const SHIPPED_SKILLS_DIR = join(HOST_DIR, 'shipped-skills')
 async function run(label, command, args, options = {}) {
   console.log(`[pack-macos] ${label}`)
   await new Promise((resolveRun, reject) => {
-    const child = spawn(command, args, { cwd: options.cwd ?? root, stdio: 'inherit' })
+    const child = spawn(command, args, {
+      cwd: options.cwd ?? root,
+      stdio: 'inherit',
+      shell: process.platform === 'win32',
+    })
     child.on('error', reject)
     child.on('exit', (code) => {
       if (code === 0) resolveRun()
