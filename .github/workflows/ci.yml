@@ -1,0 +1,47 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  verify:
+    # 目标平台是 macOS（Apple Silicon）。测试套件里有 Seatbelt 沙箱与 Unix 路径断言，
+    # 因此用 macos-latest；Linux/Windows 上这些断言会失败（Windows 上另有 ~22 处
+    # 平台假设失败），那属于测试侧限制、不是产品缺陷。
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # 版本取自 package.json 的 packageManager 字段（pnpm@11.7.0）
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22.x'
+          cache: pnpm
+
+      - name: Install
+        run: pnpm install --frozen-lockfile
+
+      - name: Typecheck
+        run: pnpm typecheck
+
+      # 必须在 Test 之前：测试会解析 workspace 包的 lib/ 产物
+      # （否则报 `Failed to resolve entry for package "@corum/..."`）
+      - name: Build
+        run: pnpm build
+
+      - name: Test
+        run: pnpm test
+
+      # 无 DSH_CHECKOUT 时逐字节比对断言自动跳过（并逐条标注），
+      # 事件一致性 / 挂载点 / inline-css 等本机断言仍然执行。
+      - name: Fork-drift guard
+        run: pnpm guard
