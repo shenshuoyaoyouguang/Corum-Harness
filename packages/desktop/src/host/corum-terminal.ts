@@ -18,6 +18,7 @@
  */
 
 import { randomUUID } from 'node:crypto'
+import { spawnSync } from 'node:child_process'
 import type { Context } from '@deepseek-ai/cordis'
 import { TypertRemoteService, Remote } from '@deepseek-ai/dsh-typert-protocol'
 import * as pty from 'node-pty'
@@ -58,6 +59,55 @@ interface TerminalSession {
 }
 
 /**
+ * win32 默认交互 shell 探测结果缓存（避免每次 create 都 spawnSync 探测）。
+ * pwsh.exe 优先（PowerShell 7+，与 orchestration.ts 工具面 win32 走 pwsh 的口径
+ * 对齐）；缺失回落系统内置 powershell.exe（Windows PowerShell 5.1，所有 win32 必装）。
+ * 本模块位于 desktop 壳 host（非 @corum/* 插件包，不被多 bundle 内联），模块级
+ * 缓存是单进程内单例，不触跨 bundle 共享状态红线。
+ */
+let cachedWin32Shell: string | undefined
+
+function detectWin32Shell(): string {
+  if (cachedWin32Shell !== undefined) return cachedWin32Shell
+  let resolved = 'powershell.exe'
+  try {
+    const probe = spawnSync('pwsh.exe', ['-NoLogo', '-Command', 'exit 0'], {
+      stdio: 'ignore',
+      timeout: 3000,
+      windowsHide: true,
+    })
+    if (probe.error === undefined && probe.status === 0) resolved = 'pwsh.exe'
+  } catch {
+    // pwsh.exe 不存在 → 用系统内置 powershell.exe（所有 win32 必装，不会崩）
+  }
+  cachedWin32Shell = resolved
+  return resolved
+}
+
+/**
+ * 按 platform 分派默认登录 shell 与启动参数（导出供测试）。
+ * - `SHELL` 显式设置时跨平台尊重（用户意图优先，行为与适配前一致：args `['-l']`）
+ * - win32（SHELL 未设置）：pwsh.exe 优先、缺失回落 powershell.exe，args `['-NoLogo']`
+ * - POSIX（SHELL 未设置）：`/bin/zsh` + `['-l']`（登录 shell 让 PATH/别名生效）
+ *
+ * 与 orchestration.ts:1577-1581 的 bash/pwsh/sh 三分支回落口径对齐（工具面
+ * win32 走 pwsh）；此处是交互式终端，故用 `-NoLogo` 而非 `-NonInteractive`。
+ */
+export function resolveDefaultShell(
+  platform: NodeJS.Platform,
+  shellEnv: string | undefined,
+  win32Shell: string,
+): { shell: string; args: string[] } {
+  if (shellEnv !== undefined && shellEnv.trim() !== '') {
+    return { shell: shellEnv, args: ['-l'] }
+  }
+  if (platform === 'win32') {
+    return { shell: win32Shell, args: ['-NoLogo'] }
+  }
+  return { shell: '/bin/zsh', args: ['-l'] }
+}
+
+/**
  * 真实终端 Remote：node-pty 登录 shell 会话管理。
  *
  * 不走 fiber 的 static inject：本服务由 boot 回调在根 ctx 直 new（与
@@ -72,20 +122,23 @@ export class CorumTerminalService extends TypertRemoteService {
   }
 
   /**
-   * spawn 一个登录 shell 会话。macOS 用 `process.env.SHELL || '/bin/zsh'`、
-   * args `['-l']`（登录 shell 让 PATH/别名等用户配置生效）。cwd 缺省回退
-   * host 进程 cwd（IDE 场景即项目根）。
+   * spawn 一个登录 shell 会话。按 `process.platform` 分派默认 shell 与登录参数：
+   * `SHELL` 显式设置时跨平台尊重（args `['-l']`）；win32（SHELL 未设置）回退
+   * pwsh.exe（缺失回落 powershell.exe）+ `['-NoLogo']`；POSIX 回退 `/bin/zsh` + `['-l']`
+   * （登录 shell 让 PATH/别名等用户配置生效）。cwd 缺省回退 host 进程 cwd（IDE
+   * 场景即项目根）。
    * @param cwd - 会话初始工作目录（绝对路径；不存在时 node-pty 抛错，信封
    *   自动包成 `{ ok: false, error }`）。
    * @returns 会话 id（后续 write/resize/poll/kill 的句柄）。
    */
   @Remote('create')
   async create(cwd?: string): Promise<{ id: string }> {
-    const shell = process.env.SHELL || '/bin/zsh'
+    const win32Shell = process.platform === 'win32' ? detectWin32Shell() : ''
+    const { shell, args } = resolveDefaultShell(process.platform, process.env.SHELL, win32Shell)
     const id = randomUUID()
     let proc: pty.IPty
     try {
-      proc = pty.spawn(shell, ['-l'], {
+      proc = pty.spawn(shell, args, {
         name: 'xterm-256color',
         cols: 80,
         rows: 24,

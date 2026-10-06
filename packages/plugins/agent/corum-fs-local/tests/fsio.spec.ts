@@ -683,6 +683,8 @@ describe('writeFileAtomic — temp-file safety', () => {
     expect((await readdir(dir)).filter(n => n.includes('.tmp'))).toEqual([])
   })
 
+  // win32 专例：NTFS DACL（自由访问控制列表）是 Windows 原生权限模型，POSIX 无对等概念
+  // （POSIX 用 mode 位，见上方 posixModes 注释）。DACL 保留断言只在 win32 宿主上有意义。
   it.skipIf(process.platform !== 'win32')('protects staged content with the existing target DACL and preserves it after replacement', async () => {
     const file = join(dir, 'protected.txt')
     await writeFile(file, 'old')
@@ -832,6 +834,9 @@ describe('writeFileAtomic — temp-file safety', () => {
     expect(await readFile(file, 'utf8')).toBe('ours')
   })
 
+  // POSIX 专例：断言新文件 mode 为 0o600（owner-only）。Windows 只通过 `chmod` 驱动
+  // 只读属性、stat 报合成 mode 位（见上方 posixModes 定义注释），mode 断言在 win32 上
+  // 不反映真实权限（NTFS ACL 才是），故跳过。win32 的权限保留由 DACL 专例覆盖。
   it.skipIf(!posixModes)('creates new files owner-only by default', async () => {
     const file = join(dir, 'a.txt')
     await writeFileAtomic(file, 'hello', undefined, undefined)

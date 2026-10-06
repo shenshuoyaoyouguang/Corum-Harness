@@ -44,12 +44,12 @@ import { readLegacyIndexes, splitCompositeKey, encodeCwdForSessionsDir, parsePro
 /**
  * 本机是否 Windows —— 本文件 B 类平台跳过的唯一判据。
  *
- * 本文件有两条**产品在 Windows 上不成立**的约束（不是测试写法问题）：
- *   ① 会话目录编码是 POSIX-only：`legacy-index.ts:263` 只去 `^/`、只把 `/` 换成 `-`
- *      ⇒ Windows 绝对 cwd 的盘符 `:` 与分隔符 `\` 原样进目录名，`mkdir` 报 ENOENT；
- *   ② 字形归一兜底只剥 `/`：`workspace-identity.ts:57` 的 `replace(/\/+$/, '')`。
- * 迁移用例**没有等价强度的平台无关写法**：产品自己的「会话本体存在」判据
- * （`session-index-migration.ts:155`）用的就是同一个编码器，在 Windows 上造不出本体目录。
+ * 会话目录编码的 win32 分支已由任务 2 修复（`legacy-index.ts` 的
+ * `encodeCwdForSessionsDir` 按 `process.platform` 分派），5 个迁移用例已转正。
+ * 仍有 4 处 skip，原因各异：
+ *   ① 字形归一兜底只剥 `/`（`workspace-identity.ts:57`，任务 4 范围）；
+ *   ② 备份路径扁平化 `replaceAll('/', '_')` 不处理 `\`（独立 win32 bug，非任务 2）；
+ *   ③ POSIX 专属形态契约（输入 `/Users/...`，win32 分支对前导 `/` 处理不同）。
  */
 const windowsHost = process.platform === 'win32'
 
@@ -149,12 +149,12 @@ describe('工作区身份由 realpath 归一的 cwd 决定', () => {
     expect(canonicalWorkspaceKey(undefined)).toBeUndefined()
   })
 
-  // Windows 不支持：字形归一兜底只剥 `/`（`workspace-identity.ts:57`），而 win32 的
-  // `path.normalize` 把尾随 `/` 规范成 `\` ⇒ 反斜杠留在键里，死条目的尾斜杠写法
-  // 与不带尾斜杠写法归一不到同一身份。
-  it.skipIf(windowsHost)('目录不存在时尾斜杠也被剥掉（与存活目录同款归一）', () => {
+  // P0-3 修复后 win32 也支持：字形归一兜底现在走 path.win32.normalize + 去尾 `\` +
+  // 盘符统一大写，死条目的尾斜杠写法与不带尾斜杠写法归一到同一身份键。
+  // 断言用 canonicalWorkspaceKey(gone) 作基准（而非裸 gone），以稳健处理盘符大小写。
+  it('目录不存在时尾斜杠也被剥掉（与存活目录同款归一）', () => {
     const gone = join(ws, 'definitely-not-here')
-    expect(canonicalWorkspaceKey(`${gone}/`)).toBe(gone)
+    expect(canonicalWorkspaceKey(`${gone}/`)).toBe(canonicalWorkspaceKey(gone))
   })
 
   it('findWorkspaceEntryByCwd 用身份而非字符串比较（尾斜杠能命中同一条目）', () => {
@@ -298,8 +298,7 @@ describe('统一会话索引（sessionId 作键）', () => {
 // ── ⑤ 迁移：零丢失 + 死条目按裁定丢弃 ──────────────────────────────────
 
 describe('统一索引迁移', () => {
-  // Windows 不支持：本体目录名由 encodeCwdForSessionsDir 产出、含盘符 `:`（见文件头 windowsHost）。
-  it.skipIf(windowsHost)('**零丢失**：同一 cwd+profile 的 20 条 task 会话全部保留（复合键只剩 1 条）', () => {
+  it('**零丢失**：同一 cwd+profile 的 20 条 task 会话全部保留（复合键只剩 1 条）', () => {
     const entries: Record<string, { cwd: string; profileId: string }> = {}
     for (let i = 0; i < 20; i += 1) {
       const sid = `corum-task-${String(i).padStart(2, '0')}`
@@ -319,8 +318,7 @@ describe('统一索引迁移', () => {
     expect(collapsed.size).toBe(1)
   })
 
-  // Windows 不支持：同上（seedSessionBody 需先造出含 `:` 的目录名）。
-  it.skipIf(windowsHost)('cwd 目录已删的条目按用户裁定**直接丢弃**并计数', () => {
+  it('cwd 目录已删的条目按用户裁定**直接丢弃**并计数', () => {
     const gone = join(ws, 'removed-dir')
     seedSessionBody(ws, 'alive-1')
     seedLegacyTaskIndex({
@@ -341,8 +339,7 @@ describe('统一索引迁移', () => {
     expect(Object.keys(readSessionIndex())).toHaveLength(0)
   })
 
-  // Windows 不支持：同上（seedSessionBody 需先造出含 `:` 的目录名）。
-  it.skipIf(windowsHost)('迁移幂等：重跑不重复计入、不丢已有条目', () => {
+  it('迁移幂等：重跑不重复计入、不丢已有条目', () => {
     seedSessionBody(ws, 'k-1')
     seedLegacyTaskIndex({ 'k-1': { cwd: ws, profileId: 'task' } })
     const first = migrateSessionIndex()
@@ -354,8 +351,7 @@ describe('统一索引迁移', () => {
     expect(readSessionIndex()['k-1']).toBeDefined()
   })
 
-  // Windows 不支持：同上（seedSessionBody 需先造出含 `:` 的目录名）。
-  it.skipIf(windowsHost)('旧 project 索引（复合键）也能归入统一形态，且 cwd 归一', () => {
+  it('旧 project 索引（复合键）也能归入统一形态，且 cwd 归一', () => {
     seedProject('p1', ws, 'project')
     seedSessionBody(ws, 'corum-projp1-agentpm-lanegeneral-aaaa')
     // 旧 project 索引：复合键 → sessionId
@@ -373,15 +369,17 @@ describe('统一索引迁移', () => {
     expect(entry?.cwd).toBe(canonicalWorkspaceKey(ws))
   })
 
-  // Windows 不支持：同上（seedSessionBody 需先造出含 `:` 的目录名）。
-  it.skipIf(windowsHost)('迁移不删旧索引文件（回滚安全网）', () => {
+  it('迁移不删旧索引文件（回滚安全网）', () => {
     seedSessionBody(ws, 'keep-1')
     seedLegacyTaskIndex({ 'keep-1': { cwd: ws, profileId: 'task' } })
     migrateSessionIndex()
     expect(existsSync(join(home, 'projects', 'task', 'corum', 'task-sessions.json'))).toBe(true)
   })
 
-  // Windows 不支持：同上（seedSessionBody 需先造出含 `:` 的目录名）。
+  // Windows 不支持：备份逻辑 `cpSync(f, join(backupDir, f.replaceAll('/', '_')))`（
+  // session-index-migration.ts:115）在 win32 上 `f` 含 `\` 不含 `/`，`replaceAll('/', '_')`
+  // 不扁平化 ⇒ 目标路径含盘符 `:` ⇒ cpSync 失败被 catch 吞掉 ⇒ backupDir 保持 null。
+  // 属独立的 win32 备份路径扁平化 bug，不在任务 2（会话目录编码）范围。
   it.skipIf(windowsHost)('迁移前落备份', () => {
     seedSessionBody(ws, 'b-1')
     seedLegacyTaskIndex({ 'b-1': { cwd: ws, profileId: 'task' } })
@@ -390,7 +388,7 @@ describe('统一索引迁移', () => {
     expect(existsSync(result.backupDir!)).toBe(true)
   })
 
-  // Windows 不支持：同上（seedSessionBody 需先造出含 `:` 的目录名）。
+  // Windows 不支持：同上（备份路径扁平化 bug，见"迁移前落备份"注释）。
   it.skipIf(windowsHost)('无事可做时**不**落备份（避免每次启动累积快照）', () => {
     // 首次：确有迁移动作 ⇒ 落备份
     seedSessionBody(ws, 'nb-1')
@@ -453,12 +451,43 @@ describe('从 sessionId 反解 project 泳道（比拆复合键可信）', () =>
 // ── ⑥ 会话目录编码（与官方 session-persistence 同款）───────────────────
 
 describe('会话目录编码', () => {
-  // Windows 不支持：这条契约的输入是 macOS 形态 cwd（`/Users/...`），而编码器只认 Unix
-  // 根斜杠与 `/` 分隔符（`legacy-index.ts:263`）；win32 的 `path.normalize` 先把它折成
-  // `\Users\...` ⇒ 该输入在 Windows 上产出 `--\Users\kukucai\work\kkc-desktop--`，
-  // 与官方形态不可比（编码器本身 POSIX-only，属产品事实）。
+  // 这条契约的输入是 macOS 形态 cwd（`/Users/...`）。POSIX 分支去前导 `/` 后换 `-`
+  // ⇒ `--Users-...--`；win32 分支不剥非盘符前导、把前导 `/` 也换 `-`
+  // ⇒ `---Users-...--`（多一个前导 `-`）。两平台对同一 POSIX 形态输入的编码形态
+  // 不同是平台分支的预期差异（win32 专例见下方 describe），此断言仅对 POSIX 成立。
   it.skipIf(windowsHost)('与官方 `--<cwd 去根斜杠、分隔符换 ->--` 同形', () => {
     expect(encodeCwdForSessionsDir('/Users/kukucai/work/kkc-desktop'))
       .toBe('--Users-kukucai-work-kkc-desktop--')
+  })
+
+  // ── win32 专例：盘符 / UNC / 混写分隔符 ──────────────────────────────
+  // 仅在 win32 运行：以下输入是 Windows 形态路径，POSIX 分支不处理盘符 / `\`，
+  // 产出会保留 `:` / `\`（POSIX 上无此形态 cwd，属预期）。
+  it.skipIf(!windowsHost)('win32 盘符/UNC/混写分隔符：产出不含任何非法目录名字符', () => {
+    const cases = [
+      'D:\\work\\foo', // 盘符 + 反斜杠
+      'd:\\work\\foo', // 小写盘符
+      'C:/Users/bar', // 盘符 + 正斜杠
+      '\\\\server\\share\\dir', // UNC
+    ]
+    for (const cwd of cases) {
+      const dir = encodeCwdForSessionsDir(cwd)
+      // Windows 非法目录名字符一个都不许出现（`:` `\` `/` `<` `>` `|` `?` `*`）
+      expect(dir).not.toMatch(/[:\\\/<>|?*]/)
+      // 仍以 `--` 包围（与官方 session-persistence 同款外形）
+      expect(dir.startsWith('--') && dir.endsWith('--')).toBe(true)
+    }
+  })
+
+  it.skipIf(!windowsHost)('win32 大小写盘符编码同形（盘符被剥，大小写不影响目录名）', () => {
+    expect(encodeCwdForSessionsDir('D:\\work\\foo'))
+      .toBe(encodeCwdForSessionsDir('d:\\work\\foo'))
+  })
+
+  it.skipIf(!windowsHost)('win32 同一工作目录多次编码产出同一目录名（幂等）', () => {
+    const cases = ['D:\\work\\foo', 'd:\\work\\foo', 'C:/Users/bar', '\\\\server\\share\\dir']
+    for (const cwd of cases) {
+      expect(encodeCwdForSessionsDir(cwd)).toBe(encodeCwdForSessionsDir(cwd))
+    }
   })
 })

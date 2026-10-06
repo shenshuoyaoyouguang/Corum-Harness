@@ -33,6 +33,8 @@ import { corumHome } from './session-index.ts'
 import type { SessionIndexEntry } from './session-index.ts'
 // 工作区身份（L0 助手）：项目模式剥离后由 workspace-identity.ts 承接。
 import { canonicalWorkspaceKey, isValidProjectId } from './workspace-identity.ts'
+// win32 路径处理原语（任务 1）：盘符前缀剥离，供会话目录编码 win32 分支复用。
+import { stripDrivePrefix } from './win32-path-helpers.ts'
 
 /** 一条从旧索引读出的会话（统一形态 + 来源标记）。 */
 export interface LegacySession {
@@ -257,8 +259,30 @@ export function sessionBodyDir(cwd: string, sessionId: string, home: string = co
 /**
  * cwd → 会话目录名编码（官方 session-persistence 同款：`--` + 去根斜杠后
  * 分隔符换 `-` + `--`）。
+ *
+ * 平台分支：
+ * - **win32**：先剥盘符前缀（`D:` → ``，复用 `stripDrivePrefix`），再把 `\` 与 `/`
+ *   一并换 `-`。避免目录名含 `:` / `\` 导致 `mkdir` ENOENT——这是会话本体与存量
+ *   迁移在 Windows 上整体不可用的根因。
+ * - **POSIX**：去前导 `/` 后 `/` 换 `-`（原逻辑，保持不变）。
+ *
+ * 产出恒以 `--` 包围，且不含 `:` / `\` / `/` 等 Windows 非法目录名字符。
  */
 export function encodeCwdForSessionsDir(cwd: string): string {
   const key = canonicalWorkspaceKey(cwd) ?? cwd
-  return `--${key.replace(/^\//, '').replace(/[/]/g, '-')}--`
+  return `--${encodeSessionDirKey(key)}--`
+}
+
+/**
+ * 工作目录键 → 会话目录名中段（不含 `--` 包围）。
+ *
+ * 按平台分派：win32 剥盘符前缀后双分隔符换 `-`；POSIX 去前导 `/` 后 `/` 换 `-`。
+ * 产出不含 `:` / `\` / `/`，保证 `mkdir` 在任一平台均可建。
+ */
+function encodeSessionDirKey(key: string): string {
+  if (process.platform === 'win32') {
+    // 剥盘符前缀（`D:\work` → `\work`；UNC / POSIX 原样）后，`\` 与 `/` 一并换 `-`。
+    return stripDrivePrefix(key).replace(/[\\/]/g, '-')
+  }
+  return key.replace(/^\//, '').replace(/[/]/g, '-')
 }

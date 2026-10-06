@@ -390,6 +390,17 @@ function isSpecialTarget(text: string): boolean {
 }
 
 /**
+ * 绝对路径判定（POSIX `/` 开头或 win32 盘符/UNC 开头）。
+ *
+ * 不读 `process.platform`：POSIX 路径不以盘符/UNC 开头，不会误判；本模块
+ * 零 import、零全局状态（见文件头注），故内联正则而非复用
+ * `@corum/corum-agent` 的 `isWindowsAbsolutePath`——同源口径，注释互指。
+ */
+function isAbsolutePathText(text: string): boolean {
+  return text.startsWith('/') || /^[A-Za-z]:[\\/]/.test(text) || /^[/\\]{2}/.test(text)
+}
+
+/**
  * 一个词作为**写目标**的判定。
  * @param cwdUnknown - 命令里出现过无法确定的 `cd`（见 `BashWriteScan.cwdSteps`）。
  * @returns `ok` = 路径确定；`special` = 不是文件写；其余 = 不确定（原因分档）。
@@ -402,7 +413,8 @@ function classifyTarget(word: WordToken, cwdUnknown: boolean): 'ok' | 'special' 
   if (word.glob) return 'glob'
   if (word.tilde) return 'other'
   // `cd` 之后相对路径的基准目录已经变了、又算不出它是哪个目录：宁可漏。
-  if (cwdUnknown && !text.startsWith('/')) return 'cd'
+  // 绝对路径（POSIX '/' 或 win32 盘符/UNC）不受 cwd 影响，走 'ok'。
+  if (cwdUnknown && !isAbsolutePathText(text)) return 'cd'
   return 'ok'
 }
 
@@ -822,7 +834,13 @@ export function selectUnionCandidates(entries: PorcelainEntry[], options: UnionS
   const { root, floor, maxPaths, maxDirDepth, probe } = options
   // 交给 probe 的路径一律不带尾斜杠（porcelain 给目录是 `dir/`），免得探针实现要猜两种形态。
   const base = root.endsWith('/') ? root.slice(0, -1) : root
-  const joinRoot = (rel: string): string => (rel.startsWith('/') ? base + rel : `${base}/${rel}`)
+  // win32 盘符/UNC 绝对路径已是绝对路径，直接返回不拼 base（防御：porcelain
+  // 正常给相对路径，但盘符/UNC 绝对路径不应拼到 base）。正则与本模块
+  // isAbsolutePathText 同源（零 import 约束，见文件头注）。
+  const joinRoot = (rel: string): string => {
+    if (/^[A-Za-z]:[\\/]/.test(rel) || /^[/\\]{2}/.test(rel)) return rel
+    return rel.startsWith('/') ? base + rel : `${base}/${rel}`
+  }
   const out: string[] = []
   /** 「本轮动过」：优先文件自己的 mtime，文件不在了退到父目录的 mtime。 */
   const touchedSince = (abs: string): boolean => {

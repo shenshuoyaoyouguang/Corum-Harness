@@ -16,6 +16,7 @@
  */
 import { describe, expect, it } from 'vitest'
 import { join, resolve } from 'node:path'
+import { tmpdir } from 'node:os'
 import {
   absolutePathsIn,
   confinementGuard,
@@ -210,11 +211,15 @@ describe('confinementGuard — 隔离子会话的写边界（修法 2）', () =>
   })
 
   describe('临时区允许集', () => {
-    it('至少含 /tmp，且已 resolve 去重', () => {
+    it('至少含一个临时根，且已 resolve 去重', () => {
       const roots = confinementTempRoots()
       expect(roots.length).toBeGreaterThan(0)
-      // 允许集里的 /tmp 项是 `path.resolve('/tmp')`（见 `confinementTempRoots`）。
-      expect(roots).toContain(resolve('/tmp'))
+      // fork（corum）win32 适配（P0-2）：POSIX 含 /tmp 与 tmpdir()；
+      // win32 只含 tmpdir()（丢弃 path.resolve('/tmp') 伪根——win32 上解析为当前盘符下 \tmp）。
+      if (process.platform !== 'win32') {
+        expect(roots).toContain(resolve('/tmp'))
+      }
+      expect(roots).toContain(resolve(tmpdir()))
       expect(new Set(roots).size).toBe(roots.length)
     })
   })
@@ -256,12 +261,10 @@ describe('confinementGuard — 隔离子会话的写边界（修法 2）', () =>
       expect(realGuard({ name: 'write', arguments: { file_path: join(wt, 'f.ts'), content: 'x' } })).toBeUndefined()
     })
 
-    // win32 不适用：写目标是从命令**文本**里按「以 `/` 开头」提取的
-    // （`src/confinement.ts` 的 `absolutePathsIn` 正则 `(?:^|[\s='"])(\/[^\s'"|;&()<>]*)`），
-    // 只覆盖 Unix 风格 `/abs`。本机（win32）`join()` 产出的主树是 `D:\2026.2.6\…`，它既不
-    // 以 `/` 开头、也不在 `cd` 目标里 ⇒ 写目标列表为空 ⇒ bash 分支不表态（变异工具那条走
-    // `path.resolve`，与文本无关，故在上面那条用例里照常受测）。
-    it.skipIf(process.platform === 'win32')('★ git -C 指向主树同样被拒（端到端复刻实测里那条 merge 命令）', () => {
+    // fork（corum）win32 适配（P0-2）转正：absolutePathsIn 已增补盘符/UNC 路径提取，
+    // win32 上 `join()` 产出的主树 `D:\2026.2.6\…` 现在会被盘符正则提取 ⇒ 越界判定生效。
+    // 两个平台都跑（参数化平台：POSIX 走 `/abs` 正则，win32 走盘符正则）。
+    it('★ git -C 指向主树同样被拒（端到端复刻实测里那条 merge 命令）', () => {
       expect(realGuard({ name: 'bash', arguments: { command: `git -C ${base} merge x` } })).toBeDefined()
     })
   })
@@ -430,6 +433,184 @@ describe('★ 两轴口径（2026-09-27 用户裁定）：主仓硬线 vs 仓外
       const command = 'cp /Users/kukucai/a/x.ts /Users/kukucai/b/x.ts'
       expect(guard(bash(command))).toBeUndefined()
       expect(confinementViolation({ worktreeRoot: WORKTREE, parentTreeRoot: MAIN }, bash(command))?.kind).toBe('outside')
+    })
+  })
+})
+/**
+ * fork（corum）win32 适配（P0-2，安全面）：隔离写门禁的 win32 路径提取专例。
+ *
+ * 由来：`absolutePathsIn` 旧正则只覆盖 POSIX `/abs`，win32 上 `D:\target`、`C:/target`、
+ * `\\server\share\target` 均漏判 ⇒ `git -C D:\主仓 …` 越界写被放行。本组用例钉死三处
+ * 同源缺口的修复：absolutePathsIn 提取、cdTargetsOf 绝对判定、confinementTempRoots 允许集。
+ *
+ * **安全红线**：漏判优先于误判 —— 对主仓之外的写目标不得放行。
+ *
+ * win32 专例用 `skipIf(!isWin32)` 限定：POSIX 上这些路径形态不存在（`D:\…` 被当相对路径，
+ * `\\server\share` 被当转义），强行跑会因 `path.resolve` 语义差异而假红。
+ */
+describe('★ win32 路径提取（P0-2，安全面）', () => {
+  const isWin32 = process.platform === 'win32'
+
+  describe('absolutePathsIn — win32 盘符/UNC 路径提取', () => {
+    it.skipIf(!isWin32)('提取盘符路径 D:\\越界\\path（反斜杠）', () => {
+      expect(absolutePathsIn('rm -rf D:\\outside\\path')).toContain(resolve('D:\\outside\\path'))
+    })
+
+    it.skipIf(!isWin32)('提取盘符路径 C:/越界/path（正斜杠）', () => {
+      expect(absolutePathsIn('rm -rf C:/outside/path')).toContain(resolve('C:/outside/path'))
+    })
+
+    it.skipIf(!isWin32)('提取 UNC 路径 \\\\server\\share\\越界', () => {
+      expect(absolutePathsIn('rm -rf \\\\server\\share\\outside')).toContain(resolve('\\\\server\\share\\outside'))
+    })
+
+    it.skipIf(!isWin32)('提取 --opt=D:\\abs 形态（盘符路径赋值）', () => {
+      expect(absolutePathsIn('cp x --target=D:\\outside\\y')).toContain(resolve('D:\\outside\\y'))
+    })
+
+    it.skipIf(!isWin32)('提取引号内的盘符路径（pwsh 命令文本）', () => {
+      expect(absolutePathsIn('rm -rf "D:\\outside\\path"')).toContain(resolve('D:\\outside\\path'))
+    })
+
+    it.skipIf(!isWin32)('提取 / 与 \\ 混写的盘符路径', () => {
+      // D:\\corum-test-main/packages\\x.ts —— 混写分隔符，path.resolve 在 win32 上正确归一
+      expect(absolutePathsIn('rm -rf D:\\corum-test-main/packages\\x.ts')).toContain(resolve('D:\\corum-test-main/packages\\x.ts'))
+    })
+
+    it.skipIf(!isWin32)('POSIX 路径仍被提取（不因 win32 增补而漏掉 POSIX 分支）', () => {
+      expect(absolutePathsIn('rm -rf /tmp/x')).toContain(resolve('/tmp/x'))
+    })
+  })
+
+  describe('confinementGuard — win32 越界写硬拒（安全红线：漏判优先于误判）', () => {
+    // 纯词法判定，不需要真建目录。主仓与 worktree 都用 win32 盘符路径。
+    // 越界 = 主仓之内、worktree 之外（parent-tree，硬拒）；主仓之外是 outside（弃权）。
+    const winMain = 'D:\\corum-test-main'
+    const winWt = 'D:\\corum-test-main\\.corum-worktrees\\wt-x'
+    const guard = confinementGuard({ worktreeRoot: winWt, parentTreeRoot: winMain })
+    const bash = (command: string) => ({ name: 'bash', arguments: { command } })
+    const pwsh = (command: string) => ({ name: 'pwsh', arguments: { command } })
+
+    it.skipIf(!isWin32)('★ 命令含 D:\\主仓\\packages\\x.ts 显式写路径被提取并拒（parent-tree）', () => {
+      expect(guard(bash(`rm -rf ${winMain}\\packages\\x.ts`))).toBeDefined()
+      expect(confinementViolation({ worktreeRoot: winWt, parentTreeRoot: winMain }, bash(`rm -rf ${winMain}\\packages\\x.ts`))?.kind).toBe('parent-tree')
+    })
+
+    it.skipIf(!isWin32)('★ 命令含 C:/主仓/packages/x.ts 显式写路径被提取并拒（C: 盘符正斜杠）', () => {
+      const cMain = 'C:/corum-test-main'
+      const cWt = 'C:/corum-test-main/.corum-worktrees/wt-x'
+      const g = confinementGuard({ worktreeRoot: cWt, parentTreeRoot: cMain })
+      expect(g(bash('rm -rf C:/corum-test-main/packages/x.ts'))).toBeDefined()
+      expect(confinementViolation({ worktreeRoot: cWt, parentTreeRoot: cMain }, bash('rm -rf C:/corum-test-main/packages/x.ts'))?.kind).toBe('parent-tree')
+    })
+
+    it.skipIf(!isWin32)('★ 命令含 \\\\server\\share\\主仓\\packages UNC 写路径被提取并拒', () => {
+      const uncMain = '\\\\server\\share\\main'
+      const uncWt = '\\\\server\\share\\main\\.corum-worktrees\\wt-x'
+      const g = confinementGuard({ worktreeRoot: uncWt, parentTreeRoot: uncMain })
+      expect(g(bash('rm -rf \\\\server\\share\\main\\packages\\x.ts'))).toBeDefined()
+      expect(confinementViolation({ worktreeRoot: uncWt, parentTreeRoot: uncMain }, bash('rm -rf \\\\server\\share\\main\\packages\\x.ts'))?.kind).toBe('parent-tree')
+    })
+
+    it.skipIf(!isWin32)('★ git -C D:\\主仓 merge 被拒（win32 端到端复刻实测那条）', () => {
+      expect(guard(bash(`git -C ${winMain} merge x`))).toBeDefined()
+      expect(confinementViolation({ worktreeRoot: winWt, parentTreeRoot: winMain }, bash(`git -C ${winMain} merge x`))?.kind).toBe('parent-tree')
+    })
+
+    it.skipIf(!isWin32)('★ pwsh 命令同样受约束（rm 是 pwsh 里 Remove-Item 别名，detectBashWrite 认识）', () => {
+      expect(guard(pwsh(`rm -rf ${winMain}\\packages\\x.ts`))).toBeDefined()
+    })
+
+    it.skipIf(!isWin32)('★ / 与 \\ 混写的越界写路径被拒', () => {
+      // D:\\corum-test-main/packages\\x.ts —— 混写分隔符，落在主仓内 ⇒ parent-tree
+      expect(guard(bash('rm -rf D:\\corum-test-main/packages\\x.ts'))).toBeDefined()
+    })
+
+    it.skipIf(!isWin32)('★ 主仓之外的写目标弃权（outside，不硬拒——两轴口径）', () => {
+      // D:\\outside 在主仓之外 ⇒ outside（门禁弃权，交权限层）。验证不误伤。
+      expect(guard(bash('rm -rf D:\\outside\\path'))).toBeUndefined()
+      expect(confinementViolation({ worktreeRoot: winWt, parentTreeRoot: winMain }, bash('rm -rf D:\\outside\\path'))?.kind).toBe('outside')
+    })
+  })
+
+  describe('cdTargetsOf — win32 绝对路径判定（cd D:\\主仓 后相对写以主仓为 cwd）', () => {
+    const winMain = 'D:\\corum-test-main'
+    const winWt = 'D:\\corum-test-main\\.corum-worktrees\\wt-x'
+    const guard = confinementGuard({ worktreeRoot: winWt, parentTreeRoot: winMain })
+    const bash = (command: string) => ({ name: 'bash', arguments: { command } })
+
+    it.skipIf(!isWin32)('★ cd D:\\主仓 后相对写路径以主仓为 cwd 解析，越界判定不失真', () => {
+      // cd 到主仓后，rm 的相对路径 packages/x.ts 落在主仓里 ⇒ cd 目标本身即越界
+      expect(guard(bash(`cd ${winMain} && rm -rf packages/x.ts`))).toBeDefined()
+      expect(confinementViolation({ worktreeRoot: winWt, parentTreeRoot: winMain }, bash(`cd ${winMain} && rm -rf packages/x.ts`))?.kind).toBe('parent-tree')
+    })
+
+    it.skipIf(!isWin32)('★ cd C:/主仓（正斜杠盘符）同样被判为绝对路径', () => {
+      const mainFwd = 'C:/corum-test-main'
+      const wtFwd = 'C:/corum-test-main/.corum-worktrees/wt-x'
+      const g = confinementGuard({ worktreeRoot: wtFwd, parentTreeRoot: mainFwd })
+      expect(g(bash(`cd ${mainFwd} && rm -rf x.ts`))).toBeDefined()
+    })
+
+    it.skipIf(!isWin32)('★ cd \\\\server\\share\\主仓（UNC）被判为绝对路径', () => {
+      const mainUnc = '\\\\server\\share\\main'
+      const wtUnc = '\\\\server\\share\\main\\.corum-worktrees\\wt-x'
+      const g = confinementGuard({ worktreeRoot: wtUnc, parentTreeRoot: mainUnc })
+      expect(g(bash(`cd ${mainUnc} && rm -rf x.ts`))).toBeDefined()
+    })
+  })
+
+  describe('拒绝优先于允许（安全红线：写目标同时匹配允许集与拒绝集时判为硬拒）', () => {
+    it.skipIf(!isWin32)('★ 主仓落在 tmpdir() 之内时仍被拒（拒绝优先于允许集）', () => {
+      // 构造：主仓落在 tmpdir() 之内（允许集），但写目标是 parent-tree ⇒ 拒绝优先
+      const tmp = resolve(tmpdir())
+      const mainInTmp = join(tmp, 'corum-win32-reject-priority')
+      const wtInTmp = join(mainInTmp, '.corum-worktrees', 'wt-x')
+      const g = confinementGuard({ worktreeRoot: wtInTmp, parentTreeRoot: mainInTmp })
+      // 变异工具写主仓 ⇒ parent-tree（即便主仓在 tmpdir 允许集内）
+      expect(g({ name: 'write', arguments: { file_path: join(mainInTmp, 'f.ts'), content: 'x' } })).toBeDefined()
+      // bash 写主仓同样拒绝
+      expect(g({ name: 'bash', arguments: { command: `rm -rf ${join(mainInTmp, 'x.ts')}` } })).toBeDefined()
+    })
+  })
+
+  describe('confinementTempRoots — win32 临时区允许集（不含 /tmp 伪根）', () => {
+    it.skipIf(!isWin32)('★ win32 只含 tmpdir()，不含 path.resolve("/tmp") 伪根', () => {
+      const roots = confinementTempRoots()
+      expect(roots).toContain(resolve(tmpdir()))
+      // win32 上 path.resolve('/tmp') 解析为当前盘符下 \tmp（伪根），不应在允许集里
+      const pseudoRoot = resolve('/tmp')
+      // 只有当伪根与 tmpdir 不同时才断言不含（避免 tmpdir 恰好是 \tmp 的极端情况）
+      if (pseudoRoot !== resolve(tmpdir())) {
+        expect(roots).not.toContain(pseudoRoot)
+      }
+      // 允许集去重
+      expect(new Set(roots).size).toBe(roots.length)
+    })
+  })
+
+  describe('安全红线：对主仓越界写不得放行（漏判优先级高于误判）', () => {
+    // 钉死安全红线：各种 win32 形态的越界写都必须被提取并纳入判定，不得漏判放行。
+    const winMain = 'D:\\corum-test-main'
+    const winWt = 'D:\\corum-test-main\\.corum-worktrees\\wt-x'
+    const guard = confinementGuard({ worktreeRoot: winWt, parentTreeRoot: winMain })
+    const bash = (command: string) => ({ name: 'bash', arguments: { command } })
+
+    it.skipIf(!isWin32)('★ 重定向到主仓内文件被拒', () => {
+      expect(guard(bash(`echo hi > ${winMain}\\f.txt`))).toBeDefined()
+    })
+
+    it.skipIf(!isWin32)('★ cp 仓外到主仓被拒（多目标按最严判定）', () => {
+      expect(guard(bash(`cp D:\\outside\\x.ts ${winMain}\\packages\\x.ts`))).toBeDefined()
+      expect(confinementViolation({ worktreeRoot: winWt, parentTreeRoot: winMain }, bash(`cp D:\\outside\\x.ts ${winMain}\\packages\\x.ts`))?.kind).toBe('parent-tree')
+    })
+
+    it.skipIf(!isWin32)('★ rm -rf 主仓的 worktree 目录被拒', () => {
+      expect(guard(bash(`rm -rf ${winMain}\\.corum-worktrees\\wt-other`))).toBeDefined()
+    })
+
+    it.skipIf(!isWin32)('★ git -C 主仓 worktree remove 被拒（仓库级写 + 绝对路径）', () => {
+      expect(guard(bash(`git -C ${winMain} worktree remove --force .corum-worktrees/wt-471e5f`))).toBeDefined()
     })
   })
 })

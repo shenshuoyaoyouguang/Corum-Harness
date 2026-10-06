@@ -235,7 +235,13 @@ export function apply(ctx: Context): void {
       if (!absolute.startsWith(root)) return null
       let rel = absolute.slice(root.length)
       if (rel === '') rel = '/'
-      if (!rel.startsWith('/')) rel = '/' + rel
+      // win32: 盘符路径 slice root 后 rel 以 \ 开头，规范化为 / 前导（corumFs
+      // 约定以 / 为相对路径前导）。若 rel 仍以盘符/UNC 开头（root 未正确剥离
+      // 的防御），不补 / 前导。不读 process.platform：以路径形态为信号，POSIX
+      // 路径不以 \ 或盘符/UNC 开头，不会误判。client bundle 不依赖 host 插件
+      // 包（@corum/corum-agent/win32-path-helpers），故内联正则——同源口径。
+      if (rel.startsWith('\\')) rel = '/' + rel.slice(1)
+      else if (!rel.startsWith('/') && !/^[A-Za-z]:[\\/]/.test(rel) && !/^[/\\]{2}/.test(rel)) rel = '/' + rel
       return rel
     }
 

@@ -16,6 +16,10 @@ import { join, resolve, dirname } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { createRequire } from 'node:module'
 
+// macOS 专有脚本：依赖 plutil 修改 vendored Electron.app 的 Info.plist。
+// 非 darwin 平台无 plutil 且无 .app bundle，直接 no-op（不报错不中断）。
+if (process.platform !== 'darwin') process.exit(0)
+
 const require = createRequire(import.meta.url)
 let electronPath
 try {

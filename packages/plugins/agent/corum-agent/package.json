@@ -21,6 +21,10 @@
       "types": "./lib/types/lane-support.d.ts",
       "default": "./lib/lane-support.js"
     },
+    "./win32-path-helpers": {
+      "types": "./lib/types/win32-path-helpers.d.ts",
+      "default": "./lib/win32-path-helpers.js"
+    },
     "./package.json": "./package.json"
   },
   "scripts": {
