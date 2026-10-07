@@ -20,14 +20,14 @@
 
 import { createInterface } from 'node:readline'
 import { dirname, join, normalize, resolve, sep } from 'node:path'
-import { readFile, realpath, stat, mkdir, writeFile } from 'node:fs/promises'
+import { readFile, stat, mkdir, writeFile } from 'node:fs/promises'
 import { createReadStream } from 'node:fs'
 import { execFileSync } from 'node:child_process'
 import { fileURLToPath } from 'node:url'
 import { bootDesktop, resolveDesktopHome } from './boot.ts'
 import { CorumSessionArchive } from './session-archive.ts'
 import { imageMimeOf, videoMimeOf } from './corum-fs.ts'
-import { isRootPath, stripLeadingSep } from '@corum/corum-agent/win32-path-helpers'
+import { ProjectRootEscapeError, resolveInsideRoot } from './project-root.ts'
 
 /** Flush all live session logs to durable storage (the quit hook). */
 interface FlushRequest { type: 'session-flush'; id: string }
@@ -270,18 +270,19 @@ async function main(): Promise<void> {
             res.end('not a media file')
             return
           }
-          const root = resolve(corumFsSvc.currentRoot())
-          const normalized = isRootPath(rel) || rel === '' ? '.' : stripLeadingSep(rel)
-          const target = resolve(root, normalized)
-          if (target !== root && !target.startsWith(root + sep)) {
+          let real: string | null = null
+          try {
+            real = (await resolveInsideRoot(corumFsSvc.currentRoot(), rel)).real
+          } catch (error) {
+            // 逃逸 → 403（与下方 catch-all 的 404 区分开：不再把越权混进「找不到」）。
+            if (!(error instanceof ProjectRootEscapeError)) throw error
             res.statusCode = 403
             res.end('forbidden')
             return
           }
-          const real = await realpath(target)
-          if (real !== root && !real.startsWith(root + sep)) {
-            res.statusCode = 403
-            res.end('forbidden')
+          if (real === null) {
+            res.statusCode = 404
+            res.end('not found')
             return
           }
           const info = await stat(real)

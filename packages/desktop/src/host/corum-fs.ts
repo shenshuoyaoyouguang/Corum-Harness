@@ -27,7 +27,17 @@ import { TypertRemoteService, Remote } from '@deepseek-ai/dsh-typert-protocol'
 // fork 包 @corum/corum-api-remotes 自包含（UNIFIED-EVENT-BUS §2.2 类型安全三段式
 // 之一），type-only import 编译期即擦除，无运行时依赖。
 import type {} from '@corum/corum-api-remotes/corum-events'
-import { isRootPath, stripLeadingSep } from '@corum/corum-agent/win32-path-helpers'
+import { resolveInsideRoot } from './project-root.ts'
+
+/**
+ * real 为 null（目标不存在）时的统一拒绝。读取类端点可以喂 `real ?? target`
+ * 让 fs 自己报 ENOENT，但 absolutePath / reveal / delete / rename 源侧没有那种
+ * 自然失败点——它们必须显式要求目标存在。
+ */
+function requireReal(real: string | null, requested: string): string {
+  if (real === null) throw new Error(`cannot resolve ${requested}: no such file or directory`)
+  return real
+}
 
 declare module '@deepseek-ai/cordis' {
   interface Context {
@@ -168,26 +178,9 @@ export class CorumFsService extends TypertRemoteService {
    */
   @Remote('list')
   async list(path?: string): Promise<{ path: string; entries: CorumFsEntry[] }> {
-    const root = resolve(this.rootPath())
     const requested = path ?? '/'
-    let target: string
-    try {
-      // 路径一律按相对根处理：根（POSIX '/' 或 win32 'D:\'）与 '' 映射根，
-      // 剥掉前导分隔符（POSIX 剥 '/'，win32 保留盘符路径完整性），杜绝
-      // resolve(root, '/abs') 被绝对路径覆盖 root 的逃逸。
-      const normalized = isRootPath(requested) || requested === '' ? '.' : stripLeadingSep(requested)
-      target = resolve(root, normalized)
-      if (target !== root && !target.startsWith(root + sep)) {
-        throw new Error(`path escapes the project root: ${requested}`)
-      }
-      const real = await realpath(target)
-      if (real !== root && !real.startsWith(root + sep)) {
-        throw new Error(`path escapes the project root via symlink: ${requested}`)
-      }
-    } catch (error) {
-      if (error instanceof Error && error.message.startsWith('path escapes')) throw error
-      throw new Error(`cannot resolve ${requested}: ${String(error)}`)
-    }
+    // 路径一律按相对根处理（含 win32 盘符根与 UNC 的归一）——见 project-root 模块。
+    const { target } = await resolveInsideRoot(this.rootPath(), requested)
     try {
       const entries = await readdir(target, { withFileTypes: true })
       const items: CorumFsEntry[] = entries
@@ -213,19 +206,10 @@ export class CorumFsService extends TypertRemoteService {
     if (imageMimeOf(requested0) !== undefined || videoMimeOf(requested0) !== undefined) {
       throw new Error(`binary file: open it as preview instead of text (${requested0})`)
     }
-    const root = resolve(this.rootPath())
     const requested = path ?? '/'
-    const normalized = requested === '/' || requested === '' ? '.' : requested.replace(/^\/+/, '')
-    const target = resolve(root, normalized)
-    if (target !== root && !target.startsWith(root + sep)) {
-      throw new Error(`path escapes the project root: ${requested}`)
-    }
-    const real = await realpath(target)
-    if (real !== root && !real.startsWith(root + sep)) {
-      throw new Error(`path escapes the project root via symlink: ${requested}`)
-    }
+    const { target, real } = await resolveInsideRoot(this.rootPath(), requested)
     try {
-      const content = await readFile(real, 'utf8')
+      const content = await readFile(real ?? target, 'utf8')
       return { path: requested, content, language: languageFromPath(requested) }
     } catch (error) {
       throw new Error(`cannot read file ${requested}: ${String(error)}`)
@@ -246,18 +230,9 @@ export class CorumFsService extends TypertRemoteService {
     if (mime === undefined) {
       throw new Error(`readBinary only serves image files: ${requested}`)
     }
-    const root = resolve(this.rootPath())
-    const normalized = requested === '/' || requested === '' ? '.' : requested.replace(/^\/+/, '')
-    const target = resolve(root, normalized)
-    if (target !== root && !target.startsWith(root + sep)) {
-      throw new Error(`path escapes the project root: ${requested}`)
-    }
-    const real = await realpath(target)
-    if (real !== root && !real.startsWith(root + sep)) {
-      throw new Error(`path escapes the project root via symlink: ${requested}`)
-    }
+    const { target, real } = await resolveInsideRoot(this.rootPath(), requested)
     try {
-      const buf = await readFile(real)
+      const buf = await readFile(real ?? target)
       if (buf.byteLength > 32 * 1024 * 1024) {
         throw new Error(`image too large for preview (>32MB): ${requested}`)
       }
@@ -275,17 +250,8 @@ export class CorumFsService extends TypertRemoteService {
    */
   @Remote('absolutePath')
   async absolutePath(path: string): Promise<{ absolutePath: string }> {
-    const root = resolve(this.rootPath())
-    const normalized = path === '/' || path === '' ? '.' : path.replace(/^\/+/, '')
-    const target = resolve(root, normalized)
-    if (target !== root && !target.startsWith(root + sep)) {
-      throw new Error(`path escapes the project root: ${path}`)
-    }
-    const real = await realpath(target)
-    if (real !== root && !real.startsWith(root + sep)) {
-      throw new Error(`path escapes the project root via symlink: ${path}`)
-    }
-    return { absolutePath: real }
+    const { real } = await resolveInsideRoot(this.rootPath(), path)
+    return { absolutePath: requireReal(real, path) }
   }
 
   /**
@@ -296,24 +262,18 @@ export class CorumFsService extends TypertRemoteService {
    */
   @Remote('reveal')
   async reveal(path: string): Promise<{ revealed: boolean }> {
-    const root = resolve(this.rootPath())
-    const normalized = path === '/' || path === '' ? '.' : path.replace(/^\/+/, '')
-    const target = resolve(root, normalized)
-    if (target !== root && !target.startsWith(root + sep)) {
-      throw new Error(`path escapes the project root: ${path}`)
-    }
-    const real = await realpath(target)
-    if (real !== root && !real.startsWith(root + sep)) {
-      throw new Error(`path escapes the project root via symlink: ${path}`)
-    }
+    const { real } = await resolveInsideRoot(this.rootPath(), path)
+    const abs = requireReal(real, path)
     // macOS open -R 揭示选中；Linux xdg-open 所在目录；Windows explorer /select。
     const isWin = process.platform === 'win32'
     const cmd = process.platform === 'darwin' ? 'open' : isWin ? 'explorer' : 'xdg-open'
-    const args = process.platform === 'darwin' ? ['-R', real]
-      : isWin ? ['/select,', real]
-      : [dirname(real)]
+    const args = process.platform === 'darwin' ? ['-R', abs]
+      : isWin ? ['/select,', abs]
+      : [dirname(abs)]
     await new Promise<void>((resolvePromise, rejectPromise) => {
-      const child = spawn(cmd, args, { stdio: 'ignore' })
+      // windowsHide：explorer 是 GUI 程序本不弹控制台，但显式抑制以保证
+      // 「host 子进程全程零窗口」这条不变式无例外（新增调用方不必再逐个判）。
+      const child = spawn(cmd, args, { stdio: 'ignore', windowsHide: true })
       child.on('error', rejectPromise)
       child.on('exit', (code) => {
         if (code === 0) resolvePromise()
@@ -331,21 +291,9 @@ export class CorumFsService extends TypertRemoteService {
    */
   @Remote('write')
   async write(path: string, content: string): Promise<{ path: string }> {
-    const root = resolve(this.rootPath())
-    const normalized = path === '/' || path === '' ? '.' : path.replace(/^\/+/, '')
-    const target = resolve(root, normalized)
-    if (target !== root && !target.startsWith(root + sep)) {
-      throw new Error(`path escapes the project root: ${path}`)
-    }
-    const real = await realpath(target).catch(() => {
-      // 新文件 realpath 失败——校验父目录
-      return null
-    })
-    if (real !== null) {
-      if (real !== root && !real.startsWith(root + sep)) {
-        throw new Error(`path escapes the project root via symlink: ${path}`)
-      }
-    }
+    // 新文件不存在时由守卫上溯「最近存在的祖先」做链接校验——原先这里 realpath
+    // 失败即跳过校验（注释却写着「校验父目录」），可经根内链接写到根外。
+    const { target } = await resolveInsideRoot(this.rootPath(), path)
     try {
       // 新文件自动补父目录（mkdir recursive 已存在不报错）。
       await mkdir(dirname(target), { recursive: true })
@@ -362,12 +310,7 @@ export class CorumFsService extends TypertRemoteService {
    */
   @Remote('mkdir')
   async mkdirp(path: string): Promise<{ path: string }> {
-    const root = resolve(this.rootPath())
-    const normalized = path === '/' || path === '' ? '.' : path.replace(/^\/+/, '')
-    const target = resolve(root, normalized)
-    if (target !== root && !target.startsWith(root + sep)) {
-      throw new Error(`path escapes the project root: ${path}`)
-    }
+    const { target } = await resolveInsideRoot(this.rootPath(), path)
     try {
       await mkdir(target, { recursive: true })
       return { path }
@@ -382,18 +325,9 @@ export class CorumFsService extends TypertRemoteService {
    */
   @Remote('delete')
   async remove(path: string): Promise<{ path: string }> {
-    const root = resolve(this.rootPath())
-    const normalized = path === '/' || path === '' ? '.' : path.replace(/^\/+/, '')
-    const target = resolve(root, normalized)
-    if (target === root || !target.startsWith(root + sep)) {
-      throw new Error(`refusing to delete the project root or outside path: ${path}`)
-    }
-    const real = await realpath(target)
-    if (real === root || !real.startsWith(root + sep)) {
-      throw new Error(`path escapes the project root via symlink: ${path}`)
-    }
+    const { real } = await resolveInsideRoot(this.rootPath(), path, { denyRoot: true })
     try {
-      await rm(real, { recursive: true, force: true })
+      await rm(requireReal(real, path), { recursive: true, force: true })
       return { path }
     } catch (error) {
       throw new Error(`cannot delete ${path}: ${String(error)}`)
@@ -407,24 +341,11 @@ export class CorumFsService extends TypertRemoteService {
    */
   @Remote('rename')
   async renamePath(from: string, to: string): Promise<{ from: string; to: string }> {
-    const root = resolve(this.rootPath())
-    const normFrom = from === '/' || from === '' ? '.' : from.replace(/^\/+/, '')
-    const normTo = to === '/' || to === '' ? '.' : to.replace(/^\/+/, '')
-    const targetFrom = resolve(root, normFrom)
-    const targetTo = resolve(root, normTo)
-    if (targetFrom === root || !targetFrom.startsWith(root + sep)) {
-      throw new Error(`refusing to rename the project root or outside path: ${from}`)
-    }
-    if (targetTo !== root && !targetTo.startsWith(root + sep)) {
-      throw new Error(`destination escapes the project root: ${to}`)
-    }
-    const realFrom = await realpath(targetFrom)
-    if (realFrom === root || !realFrom.startsWith(root + sep)) {
-      throw new Error(`path escapes the project root via symlink: ${from}`)
-    }
+    const { real: realFrom } = await resolveInsideRoot(this.rootPath(), from, { denyRoot: true })
+    const { target: targetTo } = await resolveInsideRoot(this.rootPath(), to)
     try {
       await mkdir(dirname(targetTo), { recursive: true })
-      await rename(realFrom, targetTo)
+      await rename(requireReal(realFrom, from), targetTo)
       return { from, to }
     } catch (error) {
       throw new Error(`cannot rename ${from} → ${to}: ${String(error)}`)
