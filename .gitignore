@@ -32,9 +32,13 @@ packages/desktop/.corum-ide-home/
 .agent-presets/
 
 # .dbg 工作笔记的截图/二进制（md 调研笔记保留入库，图片不入库）
-.dbg/*.png
-.dbg/*.jpg
-.dbg/*.jpeg
+.dbg/**/*.png
+.dbg/**/*.jpg
+.dbg/**/*.jpeg
+
+# .dbg 探针的整目录副本（app 安装目录级拷贝，GB 量级；可再生成）
+# 2026-10-07 启动弹窗排查：Corum-fixed（修复验证物）/ Corum-probe（对照副本）
+.dbg/popup-probe/Corum-*/
 
 # 编排器隔离 worktree（运行时产物；可能是**用户 app 里正在跑的任务**，勿提交勿清理）
 .corum-worktrees/
@@ -54,6 +58,10 @@ packages/desktop/.corum-ide-home/
 docs/tasks/evidence/**/*.png
 docs/tasks/evidence/**/*.jpg
 docs/tasks/evidence/**/*.jpeg
+
+# ── 工具/Agent 本地状态（2026-10-07：两个目录此前均未忽略，长期以未跟踪态污染 git status）──
+.arts/
+.workbuddy/
 
 # ── 本地开发台账/设计稿（2026-10-04 开源前清理：本地保留、不再跟踪）──
 docs/*

@@ -26,7 +26,7 @@
 >   「定制面不得与官方逐字节一致 + 定制标记必须存在」断言（已负向测试）。
 
 > `.dbg/` 已随**上游**提交 `e74a5b44` 移出工作树（该提交不在本仓历史中）：本文中的 `.dbg/...` 路径是历史证据锚点，
-> 本仓唯一残留是 `.dbg/ux-plugin-manager/`；原索引 `docs/DBG-ARCHIVE-INDEX.md` 未随本仓分发，故不再提供取回指引。
+> 本仓已无可跟踪的 `.dbg` 内容（2026-10-07 移除最后一张截图）；原索引 `docs/DBG-ARCHIVE-INDEX.md` 未随本仓分发，故不再提供取回指引。
 >
 > ⚠️ **基线滞后（2026-10-06 核实）**：本台账的对照基线停在 **`0.1.3-alpha.1`**（`d347e70390`，全文出现 28 次），
 > 而基座已于 **2026-09-29 升至 `0.1.5-rc.3`**（全文 `0.1.5` 出现 **0** 次——§9 之后未再登记）。
@@ -40,11 +40,12 @@
 > ⚠️ **路径分三类，读时按类理解（2026-10-06 核实）**：
 > - **本仓路径**（`packages/**`、`scripts/**`、根 `cordis.patch.yml` 等）——存在，可直接读。
 > - **官方对照检出**（`/Users/kukucai/dsh/**`，以及裸的 `packages/api/*` / `packages/client/*`）——只存在于上游
->   dsh 检出；在本仓里这类路径是**路径错误，不是空结果**（见 `AGENTS.md` 的「Repo 速查」）。
+>   dsh 检出；在本仓里这类路径是**路径错误，不是空结果**（见 `AGENTS.md` 的「先读这几处（入口索引）」）。
 > - **本仓未分发的文档**（`docs/TODO.md`、`docs/plan/*`、`docs/LESSONS.md`、`docs/audit/*`、
->   `docs/HANDOFF-*.md`、`docs/DBG-ARCHIVE-INDEX.md`、`docs/agent-foundation/*`、`docs/tasks/evidence/*`、
->   `.dbg/**`）——被 `.gitignore` 的 `docs/` 规则排除或已随上游提交移出；本文提到它们是**历史锚点，
->   不是可读指针**（共 30 处、16 个唯一路径）。
+>   `docs/HANDOFF-*.md`、`docs/DBG-ARCHIVE-INDEX.md`、`docs/agent-foundation/*`、`docs/tasks/evidence/*`）
+>   ——被 `.gitignore` 的 `docs/` 规则排除；`.dbg/**` 不属此类，它是已随上游提交移出工作树的目录（其
+>   截图另由 `.gitignore` 的 `.dbg` 图片规则挡在库外）。本文提到它们都是**历史锚点，不是可读指针**
+>   （共 30 处、16 个唯一路径）。
 
 ---
 

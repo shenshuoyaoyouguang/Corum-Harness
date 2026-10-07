@@ -1,5 +1,5 @@
 /**
- * localLlm 服务的窄能力接口（跨 bundle 类型面收敛，见 AGENTS.md 红线 3）。
+ * localLlm 服务的窄能力接口（跨 bundle 类型面收敛，见 skills/corum-dev-conventions/SKILL.md 规则 3）。
  * corum-agent 只依赖这个 face，不耦合 @corum/corum-ollama 的实现包。
  * @module @corum/corum-agent/local-llm-face
  */
@@ -54,7 +54,7 @@ export interface LocalLlmFace {
 
 /**
  * Context 面：`localLlm` 是**可选**服务（只有 @corum/corum-ollama 挂载时才存在）。
- * 这里以窄能力接口（LocalLlmFace）声明，不 import 实现包——见 AGENTS.md 红线 3。
+ * 这里以窄能力接口（LocalLlmFace）声明，不 import 实现包——见 skills/corum-dev-conventions/SKILL.md 规则 3。
  * 调用方一律 `ctx.get('localLlm')`（不用 inject：缺席时插件仍要能激活）。
  */
 declare module '@deepseek-ai/cordis' {

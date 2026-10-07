@@ -18,7 +18,7 @@ import type { PropsRenderSlots, PropsRuntime, PropsStore } from '@deepseek-ai/ds
 // Type-only: pulls `useSessions` into GlobalStandardProps (0.1.2 起由 ui-session 声明)。
 import type {} from '@deepseek-ai/dsh-client-ui-session/client'
 // SessionListState 的结构类型（与 dsh-api-session-controller/client 同名类型同构；
-// 包未直接依赖该 controller——结构窄化避免新增运行时依赖，见 AGENTS.md 红线 3）。
+// 包未直接依赖该 controller——结构窄化避免新增运行时依赖，见 skills/corum-dev-conventions/SKILL.md 规则 3）。
 interface SessionListState {
   current?: string | undefined
   byId: Record<string, { blank?: boolean; displayTitle?: string; projectionValues?: unknown } | undefined>

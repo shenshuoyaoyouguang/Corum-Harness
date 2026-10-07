@@ -17,9 +17,9 @@ description: Use when changing anything in this repo (corum Agent OS / kkc-deskt
 
 1. **跨 bundle 共享状态 = cordis service**，绝不用 window 全局或模块级单例。dsh 把 `@corum/*` 源码 inline 进每个 bundle，模块级状态按 bundle 分裂且永不合并（`__corumSidebarMode` 就是死写实例）；cordis service 的实例唯一性由 root context 的 `reflect.store` 保证，天然跨 bundle 单例。合法 window 挂载仅限「写一次、只读」的交接值：`window.corumDesktop`、`__corumNotify`、`__DSH_BOOT__`、`__corumSlotRegistry`。依据：`docs/dev-conventions.md` §1、`AGENTS.md` 红线 1。
 2. **不随意 externalize `@corum/*`**：dsh 模块表只有 8 个硬编码种子，走 `dsh.client` 插件路径自造共享模块会白屏（`.dbg/b1-boot-graph-findings.md`）。绕行方案是红线 1 的 cordis service。依据：`AGENTS.md` 红线 2、`docs/dev-conventions.md` §3。
-3. **跨 bundle 类型脸不匹配 → 用本地能力接口收窄**：consumer 注入到的可能是官方基线的窄接口（corum 运行时是超集），不要耦合到实现包。依据：`AGENTS.md` 红线 3。
-4. **消费 cordis service 走 `inject` 声明**，不要在未装配的服务上 `ctx.get`（`ctx.remote` 坑）。依据：`docs/dev-conventions.md` §2、`AGENTS.md` 红线 4。
-5. **host 插件改动必须重启应用**（只有 renderer 走 HMR）；跨包状态 / 壳 / 调度改动必须过**三层实机验证**：界面渲染 + 行为 + 零新增控制台报错。依据：`docs/dev-conventions.md` §6、`AGENTS.md` 红线 5。
+3. **跨 bundle 类型脸不匹配 → 用本地能力接口收窄**：consumer 注入到的可能是官方基线的窄接口（corum 运行时是超集），不要耦合到实现包。依据：本技能（`AGENTS.md` 三条红线与 `docs/dev-conventions.md` 均未收录本条）。
+4. **消费 cordis service 走 `inject` 声明**，不要在未装配的服务上 `ctx.get`（`ctx.remote` 坑）。依据：`docs/dev-conventions.md` §2。
+5. **host 插件改动必须重启应用**（只有 renderer 走 HMR）；跨包状态 / 壳 / 调度改动必须过**三层实机验证**：界面渲染 + 行为 + 零新增控制台报错。依据：`docs/dev-conventions.md` §6、`AGENTS.md` 红线 3。
 
 ## 2. 改动工作流（按这个顺序，别跳）
 

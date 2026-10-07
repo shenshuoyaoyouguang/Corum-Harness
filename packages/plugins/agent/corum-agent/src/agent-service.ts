@@ -1392,7 +1392,7 @@ export class CorumAgentService extends TypertRemoteService {
   /**
    * 未显式指定时的 task 默认预设：读 `agent-presets` settings 命名空间的 `default` 字段。
    *
-   * 通路选择说明（AGENTS.md 红线 4）：`ctx.get('settings')` 是只读获取未注入的 settings
+   * 通路选择说明（见 skills/corum-dev-conventions/SKILL.md 规则 4）：`ctx.get('settings')` 是只读获取未注入的 settings
    * 服务的安全路径——参照同文件 `outputLanguageVariable` 的先例（约 569 行，同样用
    * `ctx.get('settings')` 读 `locale` 命名空间）。settings 服务在 boot 早期可能尚未挂载
    * ⇒ `ctx.get` 返回 undefined，此处容忍并回落。**热更新生效**：settings 文档每次
