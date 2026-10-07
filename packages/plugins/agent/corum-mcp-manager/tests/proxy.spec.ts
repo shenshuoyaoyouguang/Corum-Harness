@@ -290,7 +290,7 @@ describe('池日志出口：CORUM_MCP_POOL_LOG（dev 宿主 ctx.logger 不落盘
     sink('warn', 'busy: held by agent-A')
     expect(seen).toContain('warn:busy: held by agent-A')
     expect(readFileSync(file, 'utf8')).toContain('busy: held by agent-A')
-    rmSync(file, { force: true })
+    rmSync(file, { force: true, maxRetries: 10, retryDelay: 100 })
   })
 })
 

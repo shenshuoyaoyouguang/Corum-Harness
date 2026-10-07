@@ -61,7 +61,7 @@ beforeEach(() => {
 afterEach(() => {
   if (previousHome === undefined) delete process.env.CORUM_HOME
   else process.env.CORUM_HOME = previousHome
-  rmSync(home, { recursive: true, force: true })
+  rmSync(home, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 })
 })
 
 describe('MCP 行：授权 ⇒ 恰好一行代理，且只带 serverName（2026-09-27 改造）', () => {

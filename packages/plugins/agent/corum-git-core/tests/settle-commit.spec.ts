@@ -21,7 +21,7 @@ import { afterAll, describe, expect, it } from 'vitest'
 import { hasEffectiveChanges, hasUncommittedChanges, independentRepoPathsOf, settleCommit } from '../src/git-primitives.ts'
 
 const scratch = mkdtempSync(join(tmpdir(), 'corum-git-core-'))
-afterAll(() => { rmSync(scratch, { recursive: true, force: true }) })
+afterAll(() => { rmSync(scratch, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 }) })
 
 let seq = 0
 /** 建一个干净的临时 git 仓库（含一次初始提交），返回其路径与该仓库的提交数查询。 */

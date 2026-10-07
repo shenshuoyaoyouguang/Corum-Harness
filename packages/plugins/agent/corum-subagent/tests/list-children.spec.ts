@@ -39,7 +39,7 @@ const roots: string[] = []
 const projCacheRoots: string[] = []
 
 afterEach(() => {
-  for (const root of projCacheRoots.splice(0)) rmSync(root, { recursive: true, force: true })
+  for (const root of projCacheRoots.splice(0)) rmSync(root, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 })
   for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 })
 })
 

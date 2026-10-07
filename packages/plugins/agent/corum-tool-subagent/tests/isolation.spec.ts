@@ -39,7 +39,7 @@ import {
 } from '../src/index.ts'
 
 const scratch = mkdtempSync(join(tmpdir(), 'corum-tool-subagent-'))
-afterAll(() => { rmSync(scratch, { recursive: true, force: true }) })
+afterAll(() => { rmSync(scratch, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 }) })
 
 function entry(overrides: Partial<CorumWorktreeEntry> = {}): CorumWorktreeEntry {
   return {
@@ -55,7 +55,7 @@ function entry(overrides: Partial<CorumWorktreeEntry> = {}): CorumWorktreeEntry 
 /** 建临时 git 仓库并预建分支——台账「活条目」判定需要分支真实存在（worktree 目录可不存在）。 */
 function repoWithBranch(name: string, branch: string): string {
   const repo = join(scratch, name)
-  rmSync(repo, { recursive: true, force: true })
+  rmSync(repo, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 })
   execFileSync('git', ['init', '-q', '-b', 'main', repo], { stdio: 'pipe' })
   execFileSync('git', ['-C', repo, 'config', 'user.email', 'test@corum.local'], { stdio: 'pipe' })
   execFileSync('git', ['-C', repo, 'config', 'user.name', 'corum-test'], { stdio: 'pipe' })
@@ -218,7 +218,7 @@ describe('corumGit — fork（corum）worktree 创建/清理', () => {
 
   it('git init + 初始 commit 后可 worktree add，remove + branch -D 后干净', () => {
     execFileSync('git', ['init', '-b', 'main'], { cwd: scratch, stdio: 'pipe' })
-    rmSync(repo, { recursive: true, force: true })
+    rmSync(repo, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 })
     execFileSync('git', ['init', '-b', 'main', repo], { stdio: 'pipe' })
     execFileSync('git', ['-C', repo, 'config', 'user.email', 'test@corum.local'], { stdio: 'pipe' })
     execFileSync('git', ['-C', repo, 'config', 'user.name', 'corum-test'], { stdio: 'pipe' })
@@ -427,7 +427,7 @@ describe('entriesOf/emitFrame — 认账「主 Agent 派子 Agent 合并掉的�
   /** 真 git 仓库 + 一条已 commit 的隔离 worktree，条目已 settle。 */
   function settledWorktreeEntry(name: string, slug: string): { repo: string; worktree: string; branch: string } {
     const repo = join(scratch, name)
-    rmSync(repo, { recursive: true, force: true })
+    rmSync(repo, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 })
     execFileSync('git', ['init', '-q', '-b', 'main', repo], { stdio: 'pipe' })
     execFileSync('git', ['-C', repo, 'config', 'user.email', 'test@corum.local'], { stdio: 'pipe' })
     execFileSync('git', ['-C', repo, 'config', 'user.name', 'corum-test'], { stdio: 'pipe' })
@@ -473,7 +473,7 @@ describe('entriesOf/emitFrame — 认账「主 Agent 派子 Agent 合并掉的�
     expect(orchestration.entriesOf(sessionId)[0]?.status).toBe('integrated')
     // 现场被彻底清掉（目录 + 分支都不在——上面那次 entriesOf 的安全回收已经删了分支）后，
     // 记录仍应保留（终态条目例外于死条目剔除）。
-    rmSync(worktree, { recursive: true, force: true })
+    rmSync(worktree, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 })
     expect(execFileSync('git', ['-C', repo, 'branch', '--list', branch], { encoding: 'utf8' }).trim()).toBe('')
     const kept = orchestration.entriesOf(sessionId)
     expect(kept.length).toBe(1)
@@ -525,7 +525,7 @@ describe('entriesOf/emitFrame — 认账「主 Agent 派子 Agent 合并掉的�
 
   it('新建 worktree（空分支 tip === HEAD）不会被误认账成 integrated', () => {
     const repo = join(scratch, 'recon-repo-5')
-    rmSync(repo, { recursive: true, force: true })
+    rmSync(repo, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 })
     execFileSync('git', ['init', '-q', '-b', 'main', repo], { stdio: 'pipe' })
     execFileSync('git', ['-C', repo, 'config', 'user.email', 'test@corum.local'], { stdio: 'pipe' })
     execFileSync('git', ['-C', repo, 'config', 'user.name', 'corum-test'], { stdio: 'pipe' })
@@ -540,7 +540,7 @@ describe('entriesOf/emitFrame — 认账「主 Agent 派子 Agent 合并掉的�
 
   it('空分支 + main 往前走（tip 变成 HEAD 的祖先）同样不认账：跨重启实测的误判路径', () => {
     const repo = join(scratch, 'recon-repo-6')
-    rmSync(repo, { recursive: true, force: true })
+    rmSync(repo, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 })
     execFileSync('git', ['init', '-q', '-b', 'main', repo], { stdio: 'pipe' })
     execFileSync('git', ['-C', repo, 'config', 'user.email', 'test@corum.local'], { stdio: 'pipe' })
     execFileSync('git', ['-C', repo, 'config', 'user.name', 'corum-test'], { stdio: 'pipe' })
@@ -652,27 +652,27 @@ describe('corumDetectIntegrateChecks — fork（corum）探测式默认 checks�
     const dir = mkdtempSync(join(tmpdir(), 'corum-checks-pnpm-'))
     writeFileSync(join(dir, 'pnpm-workspace.yaml'), 'packages: []\n')
     expect(corumDetectIntegrateChecks(dir)).toEqual(['pnpm -r typecheck'])
-    rmSync(dir, { recursive: true, force: true })
+    rmSync(dir, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 })
   })
 
   it('package.json scripts.typecheck → npm run typecheck', () => {
     const dir = mkdtempSync(join(tmpdir(), 'corum-checks-tsc-'))
     writeFileSync(join(dir, 'package.json'), JSON.stringify({ scripts: { typecheck: 'tsc --noEmit' } }))
     expect(corumDetectIntegrateChecks(dir)).toEqual(['npm run typecheck'])
-    rmSync(dir, { recursive: true, force: true })
+    rmSync(dir, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 })
   })
 
   it('package.json 仅 scripts.test → npm test', () => {
     const dir = mkdtempSync(join(tmpdir(), 'corum-checks-test-'))
     writeFileSync(join(dir, 'package.json'), JSON.stringify({ scripts: { test: 'vitest run' } }))
     expect(corumDetectIntegrateChecks(dir)).toEqual(['npm test'])
-    rmSync(dir, { recursive: true, force: true })
+    rmSync(dir, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 })
   })
 
   it('均无 → git diff --check（保守兜底）', () => {
     const dir = mkdtempSync(join(tmpdir(), 'corum-checks-none-'))
     expect(corumDetectIntegrateChecks(dir)).toEqual(['git diff --check'])
-    rmSync(dir, { recursive: true, force: true })
+    rmSync(dir, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 })
   })
 })
 

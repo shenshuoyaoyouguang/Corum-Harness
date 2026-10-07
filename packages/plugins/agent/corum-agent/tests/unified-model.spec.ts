@@ -65,7 +65,7 @@ beforeEach(() => {
 afterEach(() => {
   if (prevCorumHome === undefined) delete process.env.CORUM_HOME
   else process.env.CORUM_HOME = prevCorumHome
-  rmSync(home, { recursive: true, force: true })
+  rmSync(home, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 })
   rmSync(ws, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 })
 })
 

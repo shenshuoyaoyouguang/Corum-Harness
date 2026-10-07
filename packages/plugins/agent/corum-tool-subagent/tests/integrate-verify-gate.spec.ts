@@ -109,7 +109,7 @@ function mergeWithCommit(repo: string, branch: string): void {
 }
 
 afterEach(() => {
-  for (const dir of scratchDirs.splice(0)) rmSync(dir, { recursive: true, force: true })
+  for (const dir of scratchDirs.splice(0)) rmSync(dir, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 })
 })
 
 describe('corumRunIntegrateVerify — 机制自己跑声明并取退出码', () => {

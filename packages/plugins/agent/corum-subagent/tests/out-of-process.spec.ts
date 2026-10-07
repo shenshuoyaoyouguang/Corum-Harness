@@ -56,7 +56,7 @@ describe('child cwd resolution', () => {
       writeFileSync(file, 'not a dir\n')
       expect(() => assertUsableCwd('p', 'config cwd', file)).toThrow('not an accessible directory')
     } finally {
-      rmSync(tmp, { recursive: true, force: true })
+      rmSync(tmp, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 })
     }
   })
 
@@ -70,7 +70,7 @@ describe('child cwd resolution', () => {
       expect(() => assertUsableCwd('p', 'config cwd', tmp)).toThrow('not an accessible directory')
     } finally {
       chmodSync(tmp, 0o700)
-      rmSync(tmp, { recursive: true, force: true })
+      rmSync(tmp, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 })
     }
   })
 
@@ -84,7 +84,7 @@ describe('child cwd resolution', () => {
       // requires the resolved path to exist and be enterable.
       expect(validateConfiguredCwd('p', relativeCwd)).toBe(resolve(relativeCwd))
     } finally {
-      rmSync(tmp, { recursive: true, force: true })
+      rmSync(tmp, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 })
     }
   })
 

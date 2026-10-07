@@ -38,7 +38,7 @@ import {
 const scratchDirs: string[] = []
 
 afterEach(() => {
-  for (const dir of scratchDirs.splice(0)) rmSync(dir, { recursive: true, force: true })
+  for (const dir of scratchDirs.splice(0)) rmSync(dir, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 })
 })
 
 /** 真临时仓库（已 init + 一次提交，git 身份就位）。 */

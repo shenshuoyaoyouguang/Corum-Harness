@@ -23,7 +23,7 @@ import { afterAll } from 'vitest'
 import { Config, prepareIsolatedChild, prepareTrackedChild, resolveEffectiveMode } from '../src/isolated/index.ts'
 
 const scratch = mkdtempSync(join(tmpdir(), 'corum-isolated-spec-'))
-afterAll(() => { rmSync(scratch, { recursive: true, force: true }) })
+afterAll(() => { rmSync(scratch, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 }) })
 
 interface Call { readonly kind: string; readonly args: readonly unknown[] }
 

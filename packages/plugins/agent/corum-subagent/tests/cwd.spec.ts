@@ -26,7 +26,7 @@ function parentAgent(cwd?: string): Agent {
 }
 
 const scratch = mkdtempSync(join(tmpdir(), 'corum-subagent-cwd-'))
-afterAll(() => { rmSync(scratch, { recursive: true, force: true }) })
+afterAll(() => { rmSync(scratch, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 }) })
 
 describe('childSessionMeta — fork（corum）cwd 透传', () => {
   it('显式 cwd 覆盖父会话 cwd', () => {

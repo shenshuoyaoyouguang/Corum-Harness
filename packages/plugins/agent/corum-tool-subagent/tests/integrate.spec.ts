@@ -86,7 +86,7 @@ function branchExists(repo: string, branch: string): boolean {
 beforeEach(() => { /* scratch 每例独立创建 */ })
 
 afterEach(() => {
-  for (const dir of scratchDirs.splice(0)) rmSync(dir, { recursive: true, force: true })
+  for (const dir of scratchDirs.splice(0)) rmSync(dir, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 })
 })
 
 describe('corumBranchIntegrated — 分支工作是否真进入 HEAD', () => {

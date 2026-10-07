@@ -7,7 +7,7 @@ import { corumGitWriteRoots, corumResetGitRootsCache } from '../src/git-write-ro
 import { bwrapProfileArgs, landlockProfileArgs, seatbeltProfileArgs } from '../src/profiles.ts'
 
 const scratch = realpathSync.native(mkdtempSync(join(tmpdir(), 'corum-sandbox-local-')))
-afterAll(() => { rmSync(scratch, { recursive: true, force: true }) })
+afterAll(() => { rmSync(scratch, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 }) })
 
 function git(cwd: string, args: string[]): void {
   execFileSync('git', args, { cwd, stdio: 'pipe' })

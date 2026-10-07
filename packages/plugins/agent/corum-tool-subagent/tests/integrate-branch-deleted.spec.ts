@@ -107,7 +107,7 @@ function reclaimBranch(repo: string, entry: CorumWorktreeEntry): void {
 }
 
 afterEach(() => {
-  for (const dir of scratchDirs.splice(0)) rmSync(dir, { recursive: true, force: true })
+  for (const dir of scratchDirs.splice(0)) rmSync(dir, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 })
 })
 
 describe('A. 已合并 + 已删分支 → integrated（2026-09-20 机制 bug 回归）', () => {
