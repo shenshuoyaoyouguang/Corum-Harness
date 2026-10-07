@@ -583,6 +583,22 @@ async function copyDesktopArtifacts() {
   }
 }
 
+/**
+ * 等子进程退出（有界：最多等待 ms 就放行，超时交由调用方的容忍删除兜底；永不 reject）。
+ *
+ * 为什么需要：Windows 上 `child.kill()` 是**异步生效**的，而 smoke home 里有 SQLite
+ * （`storages/kv.sqlite`）——进程还在时它锁着这个文件，紧随其后的 `rm` 必撞 EBUSY。
+ * POSIX 允许 unlink 已打开的文件，所以这一步只在 Windows 上暴露（2026-10-07 CI
+ * windows-latest 实测：host bridge boots OK 之后挂在 finally 的 rm 上）。
+ */
+function waitChildExit(child, ms = 5_000) {
+  return new Promise((resolve) => {
+    if (child.exitCode !== null || child.signalCode !== null) return resolve()
+    const timer = setTimeout(resolve, ms)
+    child.once('exit', () => { clearTimeout(timer); resolve() })
+  })
+}
+
 /** 冒烟：用真 Node 跑 bridge，等它输出 ready 即通过 */
 async function smokeBridge() {
   const bridge = join(HOST_DIR, 'lib', 'bridge.js')
@@ -618,9 +634,10 @@ async function smokeBridge() {
         if (!settled && buf.includes('"type":"ready"')) {
           settled = true
           clearTimeout(timer)
-          child.kill()
           console.log('[pack-macos] host bridge boots OK (ready emitted)')
-          resolveSmoke()
+          // 先 kill、等它真退出，最后才放行 —— finally 要去删它的 home（见 waitChildExit）。
+          child.kill()
+          waitChildExit(child).then(resolveSmoke)
         }
       })
       child.stderr.on('data', (chunk) => process.stderr.write(chunk))
@@ -642,7 +659,9 @@ async function smokeBridge() {
     // The smoke boot materializes profile scaffolding (profiles/node_modules
     // symlinks) under the redirected home; drop it so it never leaks into the
     // host extraResource that electron-builder bundles.
-    await rm(smokeHome, { recursive: true, force: true })
+    // maxRetries/retryDelay：Windows 的 EBUSY / EPERM 容忍窗口，值取仓库既有口径
+    // （tests 里 9 处一律 10 / 100）；第一道防线是上面的 waitChildExit。
+    await rm(smokeHome, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 })
   }
 }
 
