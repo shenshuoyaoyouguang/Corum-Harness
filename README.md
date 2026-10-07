@@ -74,7 +74,7 @@ dsh 运行时内核 + Electron 桌面承载层 + 41 个自研插件 + 一套默�
 ```sh
 pnpm install
 pnpm shell:dev        # 开发态启动桌面应用
-pnpm pack             # 打包桌面应用（macOS .app/.dmg；Windows NSIS 见 docs/fork-delta.md §20）
+pnpm run pack         # 打包桌面应用（macOS .app/.dmg；Windows NSIS 见 docs/fork-delta.md §20）
 ```
 
 > **平台说明**：目标平台为 **macOS**（一等公民，全量能力）与 **Linux**（开发态支持；

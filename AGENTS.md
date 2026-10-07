@@ -34,7 +34,7 @@
 
 - `pnpm shell:dev` — 开发态启动桌面应用（入口 `packages/desktop/lib/cli.js`；首次/改动后需先 `pnpm build`）。
 - `pnpm shell:smoke` — 无头握手冒烟。
-- `pnpm pack` — 打包桌面应用（macOS：.app/.dmg；Windows：NSIS）。内部按 `build` → `pack:host` → `pack:node` → `pack:app` 顺序。
+- `pnpm run pack` — 打包桌面应用（macOS：.app/.dmg；Windows：NSIS）。内部按 `build` → `pack:host` → `pack:node` → `pack:app` 顺序。⚠️ **必须带 `run`**：`pnpm pack` 是 pnpm 内置命令（Create a tarball from a package），不会执行同名脚本。
 - Windows 开发态：`powershell -File packages\desktop\scripts\dev.ps1 [--combo=coding]`（稳定 dev home + HMR；cmd 入口 `dev.cmd`）。
 
 **守卫 / lint / 发布**

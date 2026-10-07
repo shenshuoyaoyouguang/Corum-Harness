@@ -2,13 +2,16 @@ name: Release
 
 # 发布流水线（Phase 1）：打 tag → 两平台构建 → 建 **draft** Release（人工核对后点 Publish）。
 #
-# 三条来自 2026-10-07 规划、且都由本仓实测决定的设计约束：
-# ① 根 `pnpm pack` **不含**全量 build（= `pnpm --filter corum-desktop run pack`），而
+# 四条来自 2026-10-07 规划/彩排、且都由本仓实测决定的设计约束：
+# ① **必须 `pnpm run pack`，不能写 `pnpm pack`**——后者是 pnpm 内置命令（Create a tarball
+#    from a package），不会执行同名脚本：彩排实测该步骤「成功」但 dist/ 根本没生成
+#    （AssertionError 由本文件的 fail-closed 断言拦下，未产生任何 Release）。
+# ② 根 `pnpm run pack`（= `pnpm --filter corum-desktop run pack`）**不含**全量 build，而
 #    pack:host 的 `pnpm deploy` 会物化工作区包闭包（读各包 lib/）⇒ 必须先 `pnpm build`，
 #    否则 CI 上出残缺闭包（本机靠既有 lib/ 掩盖，CI 是干净检出）。
-# ② `scripts/release.mjs` 默认基线 = 「最近 tag」（git describe --tags --abbrev=0），打 tag
+# ③ `scripts/release.mjs` 默认基线 = 「最近 tag」（git describe --tags --abbrev=0），打 tag
 #    后它自己就是最近 tag ⇒ 会判「无新提交」退出 1 ⇒ 这里必须显式传 `--since=<上一个 tag>`。
-# ③ 「注意事项」的数据源 docs/tasks/log.jsonl **不随仓分发**（docs/ 只放行 3 个文件）⇒ CI 里
+# ④ 「注意事项」的数据源 docs/tasks/log.jsonl **不随仓分发**（docs/ 只放行 3 个文件）⇒ CI 里
 #    恒为 0 条（脚本缺失时 catch 返回 []，不崩）。发布说明因此只有安装提示 + TOP5。
 #
 # 产物事实（决定说明怎么写）：未签名（无 mac.identity / 无 Windows 证书）、mac 仅 arm64
@@ -115,7 +118,8 @@ jobs:
         timeout-minutes: 25
 
       - name: Pack（electron-builder）
-        run: pnpm pack
+        # 必须 `pnpm run`：`pnpm pack` 是 pnpm 内置命令（打 tarball），不跑同名脚本（见文件头 ①）。
+        run: pnpm run pack
         timeout-minutes: 45
         env:
           # 本仓无签名证书：显式关掉证书自动发现，省掉 mac 上一轮必然失败的签名探测。
