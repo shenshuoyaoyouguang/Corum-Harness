@@ -44,6 +44,9 @@ const PM_PROMPT = [
 const SPEC_SYNCED_FIELDS = [
   'nickname', 'title', 'dimension', 'baseMode', 'prompt',
   'model', 'subagentModel', 'researchModel', 'executionTools', 'parallelWork',
+  // fork（corum）2026-10-06：内置角色头像随 spec 下发（日系立绘，资产在
+  // packages/desktop/assets/avatars/<id>.png）。用户手动换过头像 ⇒ 保留用户值。
+  'avatar',
 ] as const
 
 /**
@@ -108,53 +111,37 @@ export function ensurePmProfile(): AgentProfile {
   return profile
 }
 
-/** task 模式的内置 profile id（单任务会话默认角色）。 */
-export const TASK_PROFILE_ID = 'task'
-// `TASK_PROJECT_ID = 'task'`（伪项目 id）已于 2026-09-15 随统一模型取消：
-// task 会话不再落 `$CORUM_HOME/projects/task/corum/task-sessions.json`，而是登记进
-// 统一会话索引（$CORUM_HOME/sessions.json，键 = sessionId、按 cwd 分组）。
-// 依据：architecture.project.unified-with-type-field、bug.unified-index-shape-loses-task-sessions。
-
-const TASK_PROMPT = 'You are the single-task development agent for Corum task mode. The user starts one development task in a workspace and you complete it independently.\nHow you work: understand the task → make progress with your tools (read/write files, run commands) → report the result concisely when done.\nYou are a single-task session: no project team, no delegation, no requirement management — focus on doing this one task well.'
-
 /**
- * task 模式的子 Agent 模型锁（用户 2026-09-14 裁定：为提速换 deepseek-v4.1-flash）。
- * 只锁 subagentModel，不动 researchModel —— 即「实现型子 Agent 提速，研究型仍走 glm-5.3-flash」。
+ * 单任务会话的机制内置默认角色（2026-10-06 用户拍板：由「Task 助理」改为「全能助手」）。
+ *
+ * 背景：原 `TASK_PROFILE_ID = 'task'` 绑定一个具体的「Task 助理」角色作为机制兜底，
+ * 造成「机制默认 = 某个具体助手」的身份重叠。机制需要一个兜底（未配置时必须能启动），
+ * 但兜底角色应中性、不喧宾夺主——改为 `general-assistant`（全能助手）。`task` 角色已进
+ * `RETIRED_BUILTIN_ROLE_IDS`（启动时删家目录 system 副本）；老会话里 `profileId:'task'`
+ * 由 sessions.json 迁移改写到本 id。
+ *
+ * 兼容保留导出名 `TASK_PROFILE_ID`（值已改）：7+ 处引用点（agent-service / task-lane）
+ * 无需逐处改名，语义即「单任务会话兜底角色」。
  */
-const TASK_SUBAGENT_MODEL = { provider: 'localhost', model: 'deepseek-v4.1-flash', reasoningEffort: 'high' } as const
+export const TASK_PROFILE_ID = 'general-assistant'
 
 /**
- * 确保 task 模式的内置 profile 存在（幂等）。
- * task profile 是单任务会话的默认角色：无项目团队语义，独立完成任务。
+ * 确保单任务会话的兜底角色存在（幂等）。
+ * 兜底改为 `general-assistant`（在 BUILTIN_ROLES 里，由 ensureBuiltinRoleProfiles 播种），
+ * 本函数退化为「确保该内置角色已就位」的薄封装，保持既有调用点签名不变。
  */
 export function ensureTaskProfile(): AgentProfile {
   const existing = loadProfile(TASK_PROFILE_ID)
-  if (existing !== undefined) {
-    // fork（corum）**2026-09-14 修正：只刷 prompt，绝不碰模型配置**。
-    //
-    // 我（监督侧）起初在这里加了「prompt 或 subagentModel 不一致则一并刷新」，那是**错的**：
-    // 用户拍板原则是「手动改的模型配置属于用户数据，不应该在程序升级后被覆盖」，而
-    // `subagentModel` 正是 设置→Agent 预设 里可编辑的字段（见 `SettingsAgentPresetsSection`
-    // 保存载荷）⇒ 按 spec 刷新它等于每次启动**静默回滚用户改动**。
-    //
-    // 现在：`prompt` 是**只读展示字段**（UI 里可见可改，但本 profile 的 prompt 属内置人格，
-    // 保持随版本刷新以免旧安装卡在过时人格）；**模型与能力配置一律保留用户改动**。
-    if (existing.trust === 'system' && existing.prompt !== TASK_PROMPT) {
-      const refreshed = { ...withSeededBaseline(existing), prompt: TASK_PROMPT }
-      saveProfile(refreshed)
-      return refreshed
-    }
-    return settled(existing)
-  }
+  if (existing !== undefined) return settled(existing)
+  // general-assistant 应由 ensureBuiltinRoleProfiles 播种；防御：未播种时按内置兜底造一个。
   const profile: AgentProfile = {
     id: TASK_PROFILE_ID,
-    nickname: 'Task 助理',
-    title: '单任务',
-    dimension: '研发',
+    nickname: '全能助手',
+    title: '通用助手',
+    dimension: '通用',
     baseMode: 'standard',
-    prompt: TASK_PROMPT,
+    prompt: 'You are a general-purpose assistant. You handle whatever the user brings — writing and editing, research and analysis, planning and organizing, data work, translation, coding, and everyday problem solving — and you switch hats as the task demands.',
     model: { provider: 'deepseek-official', model: 'deepseek-v4-flash' },
-    subagentModel: TASK_SUBAGENT_MODEL,
     skills: [],
     mcpServers: [],
     terminal: { mode: 'sandbox' },
@@ -212,6 +199,8 @@ interface BuiltinRoleSpec {
   parallelWork?: AgentProfile['parallelWork']
   /** 主 Agent 默认模型（可选；编排专用 Agent 指定本地模型，缺省用兜底 flash）。 */
   model?: AgentProfile['model']
+  /** 内置角色头像（可选；日系立绘资源路径，见 assets/avatars/<id>.png）。 */
+  avatar?: AgentProfile['avatar']
 }
 
 /**
@@ -221,12 +210,26 @@ interface BuiltinRoleSpec {
  * 「指挥模式」（preset `conductor`）与内置角色「指挥者」（`conductor-lead`）继承。
  * 保留 id 清单是为了让升级用户的家目录副本自动消失（否则会一直挂在「Corum 内置」组里）。
  */
-const RETIRED_BUILTIN_ROLE_IDS: readonly string[] = ['deepseek-orchestrator']
+const RETIRED_BUILTIN_ROLE_IDS: readonly string[] = [
+  'deepseek-orchestrator',
+  // fork（corum）2026-10-06：「Task 助理」彻底退役（用户拍板）。它原是单任务会话的
+  // 机制默认角色，造成「机制绑定一个具体助手」的身份重叠。机制兜底改为
+  // `general-assistant`（全能助手），家目录的 task system 副本启动时删除。
+  'task',
+]
+
+/**
+ * 内置角色头像资源 URL（2026-10-06 日系立绘头像）。
+ * 资产在 `packages/desktop/assets/avatars/<id>.png`，经壳协议 `corumapp://app/assets/`
+ * 服务（与 PluginsPage 引用 brand logo 同通道；renderer loopback 下可加载）。
+ */
+const roleAvatar = (id: string): string => `corumapp://app/assets/avatars/${id}.png`
 
 /** 预置角色清单（事实源 prompt 随版本演进幂等刷新）。 */
 const BUILTIN_ROLES: readonly BuiltinRoleSpec[] = [
   {
     id: 'project-manager',
+    avatar: roleAvatar('project-manager'),
     nickname: '项目经理',
     title: '项目管理',
     dimension: '产品',
@@ -235,6 +238,7 @@ const BUILTIN_ROLES: readonly BuiltinRoleSpec[] = [
   },
   {
     id: 'product-expert',
+    avatar: roleAvatar('product-expert'),
     nickname: '产品专家',
     title: '产品专家',
     dimension: '产品',
@@ -243,6 +247,7 @@ const BUILTIN_ROLES: readonly BuiltinRoleSpec[] = [
   },
   {
     id: 'hardware-product-manager',
+    avatar: roleAvatar('hardware-product-manager'),
     nickname: '硬件产品经理',
     title: '硬件产品经理',
     dimension: '产品',
@@ -251,6 +256,7 @@ const BUILTIN_ROLES: readonly BuiltinRoleSpec[] = [
   },
   {
     id: 'software-product-manager',
+    avatar: roleAvatar('software-product-manager'),
     nickname: '软件产品经理',
     title: '软件产品经理',
     dimension: '产品',
@@ -259,6 +265,7 @@ const BUILTIN_ROLES: readonly BuiltinRoleSpec[] = [
   },
   {
     id: 'market-strategy-researcher',
+    avatar: roleAvatar('market-strategy-researcher'),
     nickname: '市场研究员',
     title: '市场战略研究员',
     dimension: '市场',
@@ -267,6 +274,7 @@ const BUILTIN_ROLES: readonly BuiltinRoleSpec[] = [
   },
   {
     id: 'marketing-expert',
+    avatar: roleAvatar('marketing-expert'),
     nickname: '营销顾问',
     title: '营销专家',
     dimension: '市场',
@@ -275,6 +283,7 @@ const BUILTIN_ROLES: readonly BuiltinRoleSpec[] = [
   },
   {
     id: 'technical-manager',
+    avatar: roleAvatar('technical-manager'),
     nickname: '技术经理',
     title: '技术经理',
     dimension: '研发',
@@ -283,6 +292,7 @@ const BUILTIN_ROLES: readonly BuiltinRoleSpec[] = [
   },
   {
     id: 'software-architect',
+    avatar: roleAvatar('software-architect'),
     nickname: '软件架构师',
     title: '软件架构师',
     dimension: '研发',
@@ -291,6 +301,7 @@ const BUILTIN_ROLES: readonly BuiltinRoleSpec[] = [
   },
   {
     id: 'software-test-expert',
+    avatar: roleAvatar('software-test-expert'),
     nickname: '测试专家',
     title: '软件测试专家',
     dimension: '研发',
@@ -299,6 +310,7 @@ const BUILTIN_ROLES: readonly BuiltinRoleSpec[] = [
   },
   {
     id: 'hardware-test-expert',
+    avatar: roleAvatar('hardware-test-expert'),
     nickname: '硬件测试专家',
     title: '硬件测试专家',
     dimension: '研发',
@@ -307,6 +319,7 @@ const BUILTIN_ROLES: readonly BuiltinRoleSpec[] = [
   },
   {
     id: 'hardware-developer',
+    avatar: roleAvatar('hardware-developer'),
     nickname: '硬件开发',
     title: '硬件开发',
     dimension: '研发',
@@ -315,6 +328,7 @@ const BUILTIN_ROLES: readonly BuiltinRoleSpec[] = [
   },
   {
     id: 'pcb-layout-engineer',
+    avatar: roleAvatar('pcb-layout-engineer'),
     nickname: 'PCB 工程师',
     title: 'PCB-Layout 工程师',
     dimension: '研发',
@@ -323,6 +337,7 @@ const BUILTIN_ROLES: readonly BuiltinRoleSpec[] = [
   },
   {
     id: 'test-development-engineer',
+    avatar: roleAvatar('test-development-engineer'),
     nickname: '测试开发',
     title: '测试开发工程师',
     dimension: '研发',
@@ -331,6 +346,7 @@ const BUILTIN_ROLES: readonly BuiltinRoleSpec[] = [
   },
   {
     id: 'tester',
+    avatar: roleAvatar('tester'),
     nickname: '测试工程师',
     title: '测试员',
     dimension: '研发',
@@ -339,6 +355,7 @@ const BUILTIN_ROLES: readonly BuiltinRoleSpec[] = [
   },
   {
     id: 'cpp-engineer',
+    avatar: roleAvatar('cpp-engineer'),
     nickname: 'C++ 工程师',
     title: 'C/C++ 软件工程师',
     dimension: '研发',
@@ -347,6 +364,7 @@ const BUILTIN_ROLES: readonly BuiltinRoleSpec[] = [
   },
   {
     id: 'embedded-engineer',
+    avatar: roleAvatar('embedded-engineer'),
     nickname: '嵌入式工程师',
     title: '嵌入式开发工程师',
     dimension: '研发',
@@ -355,6 +373,7 @@ const BUILTIN_ROLES: readonly BuiltinRoleSpec[] = [
   },
   {
     id: 'android-system-engineer',
+    avatar: roleAvatar('android-system-engineer'),
     nickname: 'Android 系统工程师',
     title: 'Android 系统开发工程师',
     dimension: '研发',
@@ -363,6 +382,7 @@ const BUILTIN_ROLES: readonly BuiltinRoleSpec[] = [
   },
   {
     id: 'ios-engineer',
+    avatar: roleAvatar('ios-engineer'),
     nickname: 'iOS 工程师',
     title: 'iOS 应用开发工程师',
     dimension: '研发',
@@ -371,6 +391,7 @@ const BUILTIN_ROLES: readonly BuiltinRoleSpec[] = [
   },
   {
     id: 'android-app-engineer',
+    avatar: roleAvatar('android-app-engineer'),
     nickname: 'Android 工程师',
     title: 'Android 应用开发工程师',
     dimension: '研发',
@@ -379,6 +400,7 @@ const BUILTIN_ROLES: readonly BuiltinRoleSpec[] = [
   },
   {
     id: 'harmonyos-engineer',
+    avatar: roleAvatar('harmonyos-engineer'),
     nickname: '鸿蒙工程师',
     title: '鸿蒙应用开发工程师',
     dimension: '研发',
@@ -387,6 +409,7 @@ const BUILTIN_ROLES: readonly BuiltinRoleSpec[] = [
   },
   {
     id: 'java-engineer',
+    avatar: roleAvatar('java-engineer'),
     nickname: 'Java 工程师',
     title: 'Java 软件工程师',
     dimension: '研发',
@@ -395,6 +418,7 @@ const BUILTIN_ROLES: readonly BuiltinRoleSpec[] = [
   },
   {
     id: 'frontend-engineer',
+    avatar: roleAvatar('frontend-engineer'),
     nickname: '前端工程师',
     title: '前端软件工程师',
     dimension: '研发',
@@ -403,6 +427,7 @@ const BUILTIN_ROLES: readonly BuiltinRoleSpec[] = [
   },
   {
     id: 'python-engineer',
+    avatar: roleAvatar('python-engineer'),
     nickname: 'Python 工程师',
     title: 'Python 开发工程师',
     dimension: '研发',
@@ -411,6 +436,7 @@ const BUILTIN_ROLES: readonly BuiltinRoleSpec[] = [
   },
   {
     id: 'ux-designer',
+    avatar: roleAvatar('ux-designer'),
     nickname: 'UX 设计师',
     title: 'UX 设计师',
     dimension: '设计',
@@ -419,6 +445,7 @@ const BUILTIN_ROLES: readonly BuiltinRoleSpec[] = [
   },
   {
     id: 'ux-researcher',
+    avatar: roleAvatar('ux-researcher'),
     nickname: '用研专员',
     title: '用户体验研究员',
     dimension: '设计',
@@ -430,6 +457,7 @@ const BUILTIN_ROLES: readonly BuiltinRoleSpec[] = [
     // title，不能只限于编程」）——不限领域：写作/研究/规划/数据/翻译/编码/日常问题
     // 都接；dimension 用新增的「通用」档（名片筛选）。
     id: 'general-assistant',
+    avatar: roleAvatar('general-assistant'),
     nickname: '全能助手',
     title: '通用助手',
     dimension: '通用',
@@ -462,6 +490,7 @@ const BUILTIN_ROLES: readonly BuiltinRoleSpec[] = [
     // subagentModel.model/researchModel.model 按 spec 覆写（含 model），
     // 改家目录副本在下次启动即被刷回（见 ensureBuiltinRoleProfiles）。
     id: 'conductor-lead',
+    avatar: roleAvatar('conductor-lead'),
     nickname: '指挥模式',
     title: '编排指挥',
     dimension: '研发',
@@ -485,6 +514,19 @@ const BUILTIN_ROLES: readonly BuiltinRoleSpec[] = [
       + ' what input they need, what they must deliver — with your chosen approach spelled out in the brief, not just the goal),'
       + " and verify well (open the changed file and read the actual diff; judge by the original goal, never by a child agent's self-report).",
   },
+  {
+    // fork（corum）2026-10-06：「Corum 开发」收编进内置 spec（此前只作为家目录
+    // profile 存在、不在 BUILTIN_ROLES，升级会被当非内置）。定位 = corum Agent OS
+    // 桌面应用（kkc-desktop 仓库）开发工程师：桌面壳与 IDE 界面、插件与会话机制、
+    // Agent 与编排。通用栏固定成员之一。
+    id: 'corum-dev',
+    avatar: roleAvatar('corum-dev'),
+    nickname: 'Corum 开发',
+    title: 'Corum 开发工程师',
+    dimension: '研发',
+    baseMode: 'standard',
+    prompt: 'You are the Corum development engineer: you build the Corum Agent OS desktop app (the kkc-desktop repo) — the desktop shell and IDE UI, the plugin and session mechanism, agents and orchestration. How you work: prove which surface owns the behavior before editing → build the artifact that actually loads (tsc && tsdown && inline-css for UI packages) → verify on a real CDP instance (UI renders + behavior + zero new console errors). Read the design file doc/UXDesign/design.pen for layout, follow the repo red lines (cordis service for cross-bundle state, inject declarations, restart after host-plugin changes), and treat "it compiles" as not done.',
+  },
 
   // ── 基准模式的继承入口（2026-09-12 骨架 / 2026-09-13 命名定稿）──────────────
   // 「5 个模式（指挥 + 官方 standard/ptc/minimal/cordis）不再直接选中，只作继承模板；
@@ -504,6 +546,7 @@ const BUILTIN_ROLES: readonly BuiltinRoleSpec[] = [
     // （那是 2026-09-10 用户要的通用岗位角色，保留不动）；差别在人格定位：这里是
     // 「默认平衡档」的入口，工具面 = 官方 standard。
     id: 'standard-mode',
+    avatar: roleAvatar('standard-mode'),
     nickname: '标准模式',
     title: '默认平衡档',
     dimension: '通用',
@@ -512,6 +555,7 @@ const BUILTIN_ROLES: readonly BuiltinRoleSpec[] = [
   },
   {
     id: 'ptc-assistant',
+    avatar: roleAvatar('ptc-assistant'),
     nickname: 'PTC 模式',
     title: '编程式工具调用',
     dimension: '研发',
@@ -520,6 +564,7 @@ const BUILTIN_ROLES: readonly BuiltinRoleSpec[] = [
   },
   {
     id: 'minimal-assistant',
+    avatar: roleAvatar('minimal-assistant'),
     nickname: '极简模式',
     title: '轻量编码',
     dimension: '研发',
@@ -528,6 +573,7 @@ const BUILTIN_ROLES: readonly BuiltinRoleSpec[] = [
   },
   {
     id: 'preset-author',
+    avatar: roleAvatar('preset-author'),
     nickname: '创造模式',
     title: 'Agent 预设创作',
     dimension: '创作',
@@ -655,6 +701,7 @@ export function ensureBuiltinRoleProfiles(): void {
       ...(spec.subagentModel !== undefined ? { subagentModel: spec.subagentModel } : {}),
       ...(spec.researchModel !== undefined ? { researchModel: spec.researchModel } : {}),
       ...(spec.parallelWork !== undefined ? { parallelWork: spec.parallelWork } : {}),
+      ...(spec.avatar !== undefined ? { avatar: spec.avatar } : {}),
       skills: [],
       mcpServers: [],
       terminal: { mode: 'sandbox' },

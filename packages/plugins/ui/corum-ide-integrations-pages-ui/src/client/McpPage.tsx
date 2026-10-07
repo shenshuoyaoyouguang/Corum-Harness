@@ -27,7 +27,7 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
-import { ChevronDown, ChevronUp, FolderTree, Info, Plus, Trash2 } from 'lucide-react'
+import { ChevronDown, ChevronUp, FolderTree, Hammer, Info, Plus, Trash2 } from 'lucide-react'
 import { useIntegrationsRpc } from './face.tsx'
 import type { CorumRpcCall } from '@corum/corum-rpc-client/client'
 import {
@@ -223,22 +223,28 @@ function McpListView({ rpc }: {
 
   /** 页头 tab 选中态（两个 tab 目前指向同一份服务器列表，见上方页头注释）。 */
   const [tab, setTab] = useState<'market' | 'installed'>('market')
-  /** 详情面板选中项（默认选第一个；列表变化后回落——与插件页同一口径）。 */
+  /** 详情面板选中项（默认选第一个；列表变化后回落——与插件页同一口径）。
+      市场 tab 无服务器磁贴可选（仅「添加」+「建设中」），selected 恒为 undefined。 */
   const selected = useMemo(() => {
+    if (tab === 'market') return undefined
     const pool = servers ?? []
     if (pool.length === 0) return undefined
     if (selectedId === null) return pool[0]
     return pool.find(s => s.name === selectedId) ?? pool[0]
-  }, [servers, selectedId])
+  }, [tab, servers, selectedId])
 
   /**
    * 磁贴序列（0 号恒为「添加」入口贴，`null` 作哨兵）+ 排布块。
    * 排布算法与几何都来自 `@corum/corum-ui-base/client`：固定种子 ⇒ 同一份数据
    * 每次渲染完全一致；`pinFirstTwoSmalls` 把入口贴钉在左上角且为 small。
+   *
+   * fork（corum）2026-10-06 用户定调：「市场」tab 表示**在线 MCP 市场**（尚未开放），
+   * 只显示「添加」+「建设中」两张磁贴，已配置服务器列表只在「已装」tab 显示。
+   * 故市场 tab 的服务器序列为空（只剩「添加」哨兵）。
    */
   const tiles = useMemo<Array<McpServerSummaryWire | null>>(
-    () => [null, ...(servers ?? [])],
-    [servers],
+    () => [null, ...(tab === 'market' ? [] : (servers ?? []))],
+    [tab, servers],
   )
   /**
    * 排布提示（与 `tiles` 同序）：算法据此把**名字长的**放进 264 宽槽，不再随机
@@ -345,7 +351,23 @@ function McpListView({ rpc }: {
               )
             }}
           />
-          {servers !== null && servers.length === 0 && loadError === null && (
+          {/* 市场 tab = 在线 MCP 市场（未开放）：在「添加」磁贴后补一张「建设中」磁贴。
+              已装 tab 不渲染它（列表已是完整服务器）。 */}
+          {tab === 'market' && (
+            <div
+              className={mosaicTileClass({ size: 'big', tint: 'violet', glow: true, className: css.wipTile })}
+              data-tile-size="big"
+              aria-label="MCP 市场建设中"
+            >
+              <MosaicTileBody
+                icon={<Hammer size={30} />}
+                name="MCP 市场建设中"
+                version="MCP"
+                sub="在线 MCP 市场暂未开放。可点左侧「添加」自行注册一个 MCP 服务器。"
+              />
+            </div>
+          )}
+          {tab !== 'market' && servers !== null && servers.length === 0 && loadError === null && (
             <p className={css.hintText}>暂无 MCP 服务器。点击「添加」磁贴注册第一个。</p>
           )}
         </div>

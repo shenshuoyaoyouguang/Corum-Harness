@@ -327,6 +327,36 @@ export function AgentSettingsSection() {
     }
   }
 
+  /**
+   * 供应商单独变更（部分写入）：只写 provider、清 model + reasoningEffort。
+   *
+   * 背景：schema 里 `defaultModel` 是**一个 object 字段**（provider/model/reasoningEffort
+   * 是同一字段的子键），`applyTriple` 走字段级 unset 会连 provider 一起清掉，导致
+   * 「选完供应商被回弹未设置」。这里直接写**字段整体**为新三元组：
+   * - `p === ''` → 整字段 unset（回到未设置）；
+   * - 否则写 `{ provider: p }`（无 model/effort 键 = 模型待选，host schema 允许部分对象）。
+   *
+   * @param ns - 目标 settings namespace。
+   * @param field - 顶层字段名（defaultModel / defaultResearchModel）。
+   * @param p - 供应商 id；'' = 未设置。
+   */
+  const applyProviderOnly = async (ns: string, field: string, p: string): Promise<void> => {
+    setBusy(true)
+    setError(null)
+    try {
+      const ops = p === ''
+        ? [{ op: 'unset' as const, path: [field] }]
+        : [{ op: 'set' as const, path: [field], value: { provider: p } }]
+      const res = await settings.mutate(ns, ops, entryOf(ns)?.revision)
+      if (!res.ok) setError(res.error?.message ?? '写入失败')
+      else if (res.value !== undefined) settings.describe.acceptView(res.value)
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e))
+    } finally {
+      setBusy(false)
+    }
+  }
+
   const disabled = !writable || busy || loading
 
   return (
@@ -369,6 +399,13 @@ export function AgentSettingsSection() {
             catalog={catalog}
             disabled={disabled}
             onChange={v => { void apply(SUBAGENT_NS, 'defaultModel', v) }}
+            onProviderChange={p => { void applyProviderOnly(SUBAGENT_NS, 'defaultModel', p) }}
+            onModelChange={(p, m, effort) => {
+              // provider 以镜像最新值兜底（覆盖「刚选完供应商未回读即选模型」的竞态窗口）。
+              const latest = (entryOf(SUBAGENT_NS)?.user as SubagentGlobalView | undefined)?.defaultModel?.provider ?? p
+              if (m === '') { void applyProviderOnly(SUBAGENT_NS, 'defaultModel', latest); return }
+              void apply(SUBAGENT_NS, 'defaultModel', { provider: latest, model: m, ...(effort === '' ? {} : { reasoningEffort: effort }) })
+            }}
           />
         </SettingRow>
         <SettingRow label="research 子 Agent 默认模型" desc="同上，面向只读研究子 Agent 的模板值；留空 = 新预设不单独配（跟随该预设的 worker 设置）。" divider={false}>
@@ -377,6 +414,12 @@ export function AgentSettingsSection() {
             catalog={catalog}
             disabled={disabled}
             onChange={v => { void apply(SUBAGENT_NS, 'defaultResearchModel', v) }}
+            onProviderChange={p => { void applyProviderOnly(SUBAGENT_NS, 'defaultResearchModel', p) }}
+            onModelChange={(p, m, effort) => {
+              const latest = (entryOf(SUBAGENT_NS)?.user as SubagentGlobalView | undefined)?.defaultResearchModel?.provider ?? p
+              if (m === '') { void applyProviderOnly(SUBAGENT_NS, 'defaultResearchModel', latest); return }
+              void apply(SUBAGENT_NS, 'defaultResearchModel', { provider: latest, model: m, ...(effort === '' ? {} : { reasoningEffort: effort }) })
+            }}
           />
         </SettingRow>
       </SettingGroup>
@@ -461,12 +504,16 @@ export function AgentSettingsSection() {
  * @param props - value / catalog / disabled / onChange。
  * @returns the model triple select.
  */
-function ModelPairField({ value, catalog, disabled, onChange }: {
+function ModelPairField({ value, catalog, disabled, onChange, onProviderChange, onModelChange }: {
   value: ModelTriple | undefined
   /** 完整模型目录（providers + modelsByProvider + reasoningByRoute；顶层 effect 拉取，RPC 失败时为兜底目录）。 */
   catalog: ModelCatalog
   disabled: boolean
   onChange: (v: ModelTriple | undefined) => void
+  /** 供应商单独变更（部分写入：写 provider、清 model/effort）；缺省退回整三元组 onChange。 */
+  onProviderChange?: (providerId: string) => void
+  /** 模型/档位变更（字段整体写入，providerId 显式传入，避免读派生 value 的竞态）。 */
+  onModelChange?: (providerId: string, modelId: string, effort: string) => void
 }) {
   // 纯受控：选中值直接来自 props（'' = 「未设置」占位），无本地镜像 state。
   const provider = value?.provider ?? ''
@@ -509,6 +556,12 @@ function ModelPairField({ value, catalog, disabled, onChange }: {
         value={provider}
         options={[UNSET_OPTION, ...providerOptions]}
         onChange={id => {
+          if (onProviderChange !== undefined) {
+            // 供应商单独变更（部分写入）：保留 provider、清 model/effort。
+            // 避免 commit(id,'','') → 整三元组 unset → 供应商被回弹「未设置」。
+            onProviderChange(id)
+            return
+          }
           // 联动：provider 变更后原 model 不在新 provider 的目录里则重置为「未设置」。
           // 档位一律重置为默认档（跟随新模型的默认档，不保留旧档）。
           const nextModels = id === '' ? undefined : catalog.modelsByProvider[id]
@@ -522,7 +575,11 @@ function ModelPairField({ value, catalog, disabled, onChange }: {
         value={model}
         options={[UNSET_OPTION, ...modelOptions]}
         // model 变更同样重置档位（新模型未必支持旧档）。
-        onChange={id => { commit(provider, id, '') }}
+        // providerId 显式用当前值（若父层接管则用最新 provider，避免派生 value 的写入竞态）。
+        onChange={id => {
+          if (onModelChange !== undefined) { onModelChange(provider, id, ''); return }
+          commit(provider, id, '')
+        }}
         disabled={disabled}
         variant="fill"
       />
@@ -530,7 +587,10 @@ function ModelPairField({ value, catalog, disabled, onChange }: {
         <SelectField
           value={value?.reasoningEffort ?? ''}
           options={effortOptions}
-          onChange={id => { commit(provider, model, id) }}
+          onChange={id => {
+            if (onModelChange !== undefined) { onModelChange(provider, model, id); return }
+            commit(provider, model, id)
+          }}
           disabled={disabled}
           variant="fill"
         />

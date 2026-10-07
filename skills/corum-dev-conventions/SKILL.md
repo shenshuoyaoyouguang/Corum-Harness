@@ -51,6 +51,17 @@ description: Use when changing anything in this repo (corum Agent OS / kkc-deskt
 - **官方 preset 的本地副本会被包内置版本静默遮蔽** → `boot.ts` 必须带 `includeShippedRoot: false`（守卫 §17 断言）。
 - **技能根只有一处**：corum 只读 `<CORUM_HOME>/skills/<绑定名>`，不读项目 `.dsh/skills`、`.agents/skills`、`~/.agents/skills`、打包内置根（`includeDefaultRoots: false`）。技能进 corum 只有一条路：设置 → 技能 → 导入技能。
 - **沙箱内访问 `127.0.0.1:9222` 会被拦**（Operation not permitted）——CDP 脚本需要相应权限；报错是策略拦截，不是脚本 bug。
+- **改 UI 插件包构建三步缺一不可**（2026-10-06 实机）：`tsc -b && tsdown && node scripts/inline-css.mjs`。
+  只跑 `tsdown`（「最小构建」）会把 CSS 抽成外部 `lib/style.css`，dev 运行时 404 加载不到 ⇒
+  设置面板/SelectField/theme 样式全失（界面裸奔、`--corum-glass-1` 为空）。inline-css 是该包样式
+  生效的**唯一通道**。判据：`getComputedStyle(body).getPropertyValue('--corum-glass-1')` 为空。
+  见 `docs/LESSONS.md` §1.1c。
+- **settings「object 字段」的成对写入陷阱**（2026-10-06 用户报「子 Agent 供应商点击没作用」）：
+  `corum-subagent` 的 `defaultModel`/`defaultResearchModel` 是**一个 object 字段**，UI 按
+  「provider+model 成对」commit 时，选供应商（model 空）会触发三键全 unset ⇒ 回弹「未设置」。
+  修法：改字段写字段整体（供应商 `{provider}`、模型 `{provider,model}`），联动值用最新 describe
+  镜像兜底消除回读竞态。排障先分责：mutate 直调验 host，host 接受 ⇒ 责任在 UI commit。
+  见 `docs/LESSONS.md` §5.7、§9.16。
 - **「写在 persona 里的强制」不是机制**（2026-09-16）：orchestrate 声明 `merge.verify` 失败却报
   `merged + committed`——因为**真值门禁只判「分支是否进 HEAD」，从不看 verify 的退出码**，而集成者用
   普通 `git merge` 时**合并提交自己就进了 HEAD**；换个 session 只因集成者恰好用了 `--no-commit`

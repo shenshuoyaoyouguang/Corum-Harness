@@ -46,7 +46,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import {
-  Blocks, BrainCircuit, Cable, CloudOff, Cpu, Flame, KeyRound, LoaderCircle, Lock,
+  Blocks, BrainCircuit, Cable, CloudOff, Cpu, Flame, Hammer, KeyRound, LoaderCircle, Lock,
   MousePointerClick, PackageOpen, Palette, Plus, Puzzle, RefreshCw, Route, Search,
   Server, ServerCog, SquareTerminal, Trash2, WandSparkles, X,
 } from 'lucide-react'
@@ -781,11 +781,13 @@ export function PluginsPage({ callRemote }: PluginsPageProps) {
 
   /** 市场态选中的检索结果（默认第一个；切换 tab/视图后回落）。 */
   const selectedMarket = useMemo<SearchResult | InstalledEntry | null>(() => {
+    // fork（corum）2026-10-06：市场 tab 已占位「建设中」，无可选磁贴 ⇒ 详情栏恒空态。
+    if (tab === 'market') return null
     const pool: readonly (SearchResult | InstalledEntry)[] = scope === 'public' ? marketTiles : personalTiles
     if (pool.length === 0) return null
     const hit = marketId !== null ? pool.find(r => 'name' in r && r.name === marketId) : undefined
     return hit ?? pool[0]
-  }, [marketId, scope, marketTiles, personalTiles])
+  }, [tab, marketId, scope, marketTiles, personalTiles])
 
   /**
    * 已装 tab 选中的条目（**只在选中 `kind === 'plugin'` 的卡片时非空**）。
@@ -1211,6 +1213,28 @@ export function PluginsPage({ callRemote }: PluginsPageProps) {
     </div>
   )
 
+  /**
+   * 「建设中」占位磁贴（2026-10-06 用户定调）：在线插件市场暂未开放，
+   * 市场 tab 整块收成这一张磁贴卡（big 尺寸 + glow，与其他磁贴同视觉语言）。
+   * 插件只有「源码开发编译」与「市场下载」两条路，市场未开放 ⇒ 不提供任何
+   * 自添加入口（与 Skill/MCP 不同——那两页保留「添加」磁贴）。
+   */
+  const renderWipTile = (title: string, desc: string): ReactNode => (
+    <div className={css.wipWrap}>
+      <div
+        className={mosaicTileClass({ size: 'big', tint: 'violet', glow: true, className: css.wipTile })}
+        data-tile-size="big"
+        aria-label={title}
+      >
+        <MosaicTileBody
+          icon={<Hammer size={34} />}
+          name={title}
+          sub={desc}
+        />
+      </div>
+    </div>
+  )
+
   /* ── 已装 tab 的详情栏（design.pen g0Dv2n / VkLsk / KRu20）──────────────────
    * 三种视图共用「hero(150, glow) + body(padding[16,18], gap 10)」骨架：
    *   - 普通插件：可操作（配置 / 卸载），meta 行给状态与来源。
@@ -1375,33 +1399,37 @@ export function PluginsPage({ callRemote }: PluginsPageProps) {
             }}
           >{label}</button>
         ))}
-        <div className={css.searchBox}>
-          <Search size={14} className={css.searchIcon} />
-          <input
-            className={css.searchInput}
-            value={query}
-            placeholder={searchPlaceholder}
-            aria-label={searchPlaceholder}
-            onChange={e => { onQueryChange(e.target.value) }}
-            onKeyDown={(e) => {
-              if (e.key !== 'Enter') return
-              if (tab !== 'market' || scope !== 'public') return
-              cancelPending()
-              void runSearch(query)
-            }}
-          />
-        </div>
-        <div className={css.filterRow} role="group" aria-label="分类筛选">
-          {filterChips.map(([id, label]) => (
-            <button
-              key={id}
-              type="button"
-              className={`${css.filterChip}${filter === id ? ' ' + css.filterChipActive : ''}`}
-              aria-pressed={filter === id}
-              onClick={() => { setFilter(id) }}
-            >{label}</button>
-          ))}
-        </div>
+        {/* 市场态：在线市场已占位「建设中」，搜索框与分类 chips 只服务在线检索，一并隐藏。 */}
+        {tab !== 'market' && (
+          <>
+            <div className={css.searchBox}>
+              <Search size={14} className={css.searchIcon} />
+              <input
+                className={css.searchInput}
+                value={query}
+                placeholder={searchPlaceholder}
+                aria-label={searchPlaceholder}
+                onChange={e => { onQueryChange(e.target.value) }}
+                onKeyDown={(e) => {
+                  if (e.key !== 'Enter') return
+                  cancelPending()
+                  void runSearch(query)
+                }}
+              />
+            </div>
+            <div className={css.filterRow} role="group" aria-label="分类筛选">
+              {filterChips.map(([id, label]) => (
+                <button
+                  key={id}
+                  type="button"
+                  className={`${css.filterChip}${filter === id ? ' ' + css.filterChipActive : ''}`}
+                  aria-pressed={filter === id}
+                  onClick={() => { setFilter(id) }}
+                >{label}</button>
+              ))}
+            </div>
+          </>
+        )}
       </div>
       <div className={css.headerDivider} />
 
@@ -1421,41 +1449,9 @@ export function PluginsPage({ callRemote }: PluginsPageProps) {
       ) : (
       <div className={css.body}>
         <div className={css.tiles} ref={tilesRef}>
-          {tab === 'market' && scope === 'public' && (
-            <>
-              {searchError === null && results === null && <p className={css.hintText}>检索中…</p>}
-              {results !== null && marketTiles.length === 0 && <p className={css.hintText}>没有匹配的插件</p>}
-              {marketTiles.length > 0 && (
-                <>
-                  {filter === 'all' && hotTiles.length > 0 && (
-                    <div className={css.hotSection}>
-                      {renderSectionHead('最热门', true)}
-                      <div className={mosaicStyles.hotRow}>
-                        {hotTiles.map(row => renderHotTile(row))}
-                      </div>
-                    </div>
-                  )}
-                  <div className={css.allSection}>
-                    {renderSectionHead(gridSectionLabel, false)}
-                    {renderMosaic(gridTiles, marketHints, (row, size) => renderMarketTile(row, size))}
-                  </div>
-                </>
-              )}
-            </>
-          )}
-
-          {tab === 'market' && scope === 'personal' && (
-            <>
-              {error !== null && entries === null && <p className={css.errorText}>加载失败：{error}</p>}
-              {entries === null && error === null && <p className={css.hintText}>加载中…</p>}
-              {entries !== null && personalTiles.length === 0 && <p className={css.hintText}>没有本地/开发中插件</p>}
-              {personalTiles.length > 0 && (
-                <div className={css.allSection}>
-                  {renderSectionHead('本地 / 开发中', false)}
-                  {renderMosaic(personalTiles, personalHints, (entry, size) => renderPersonalTile(entry, size))}
-                </div>
-              )}
-            </>
+          {tab === 'market' && renderWipTile(
+            '插件市场建设中',
+            '在线插件市场暂未开放。当前可通过源码开发编译安装插件；已安装插件请到「已装」tab 管理。',
           )}
 
           {tab === 'installed' && (

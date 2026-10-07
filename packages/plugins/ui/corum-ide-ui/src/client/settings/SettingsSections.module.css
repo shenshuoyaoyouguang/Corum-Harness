@@ -509,6 +509,23 @@
   border-color: var(--corum-glass-border-active);
 }
 
+/* ── 预设分组（通用/专用；2026-10-06 两栏定调）───────────────────────── */
+
+.agentPresetGroup {
+  display: flex;
+  flex-direction: column;
+  gap: calc(10px * var(--corum-density-scale, 1));
+  width: 100%;
+  margin-bottom: calc(20px * var(--corum-density-scale, 1));
+}
+
+.agentPresetGroupTitle {
+  font-family: var(--corum-ui-font-family, 'Inter', -apple-system, sans-serif);
+  font-size: calc(11px * var(--corum-ui-font-scale, 1));
+  font-weight: 600;
+  color: var(--dsw-alias-label-dimmed);
+}
+
 /* ── 官方模式只读组 ────────────────────────────────────────────────── */
 
 .officialGroup {

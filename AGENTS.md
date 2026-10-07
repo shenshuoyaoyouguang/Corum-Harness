@@ -19,7 +19,7 @@
 **依赖与构建**
 
 - `pnpm install` — 安装全工作区依赖。改过 `pnpm-workspace.yaml` overrides 后须加 `--no-frozen-lockfile`；无 TTY 时前置 `CI=true`。
-- `pnpm build` — 全量构建 `packages/**`。插件产物 = `tsc -b`（只写 `lib/types/*`）+ `tsdown`（生成运行时真正加载的 `lib/index.js` / `lib/client.js`）；桌面壳另含 Monaco CSS 内联。**改完插件必须重新 build 并核对产物时间戳**（旧产物会静默生效）。
+- `pnpm build` — 全量构建 `packages/**`。插件产物 = `tsc -b`（只写 `lib/types/*`）+ `tsdown`（生成运行时真正加载的 `lib/index.js` / `lib/client.js`）；**UI 插件包构建三步缺一不可**（`tsc -b && tsdown && node scripts/inline-css.mjs`，只跑 tsdown 会把 CSS 抽成外部 `lib/style.css` ⇒ dev 运行时 404、界面裸奔）；桌面壳另含 Monaco CSS 内联。**改完插件必须重新 build 并核对产物时间戳**（旧产物会静默生效）。
 - `pnpm typecheck` — 全量类型检查。⚠️ `tsc -b` 是增量编译、会藏住依赖升级造成的破坏点；依赖变动后用 `pnpm -r --no-bail typecheck --force` 复核。
 - `pnpm ci` — `typecheck && test && guard` 三连（本地复刻 CI）。
 

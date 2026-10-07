@@ -29,7 +29,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import {
-  ChevronDown, Download, FileSearch, GitPullRequest, PackagePlus,
+  ChevronDown, Download, FileSearch, GitPullRequest, Hammer, PackagePlus,
   Plus, Search, ShieldCheck, Sparkles, Terminal, Trash2, X, Zap,
 } from 'lucide-react'
 import { ConfirmDialog } from './ConfirmDialog.tsx'
@@ -299,8 +299,13 @@ function SkillMarketView({ skills, error, tab, setTab, query, setQuery, category
   builtinBusy: boolean
   builtinResult: BuiltinSkillImportResult | null
 }) {
-  /** 过滤后的技能池（搜索 + 分类）。「市场 | 已装」目前同一数据源，tab 仅作视图语义。 */
+  /** 过滤后的技能池（搜索 + 分类）。
+   *
+   * fork（corum）2026-10-06 用户定调：「市场」tab 表示**在线技能市场**（尚未开放），
+   * 整块收成「添加」+「建设中」两张磁贴，本地技能列表只在「已装」tab 显示。
+   * 故市场 tab 的 pool 恒为空（技能磁贴不渲染），已装 tab 才是完整列表。 */
   const pool = useMemo(() => {
+    if (tab === 'market') return []
     let list = skills ?? []
     const q = query.trim().toLowerCase()
     if (q !== '') {
@@ -310,7 +315,7 @@ function SkillMarketView({ skills, error, tab, setTab, query, setQuery, category
       list = list.filter(s => categoryOf(s.name, s.description ?? '') === category)
     }
     return list
-  }, [skills, query, category])
+  }, [tab, skills, query, category])
 
   /**
    * 磁贴序列（0 号恒为「添加」入口贴，`null` 作哨兵）+ 排布块。
@@ -344,23 +349,28 @@ function SkillMarketView({ skills, error, tab, setTab, query, setQuery, category
       <div className={css.headerRow} role="tablist" aria-label="技能分区">
         <button type="button" role="tab" aria-selected={tab === 'market'} className={`${css.tab}${tab === 'market' ? ' ' + css.tabActive : ''}`} onClick={() => setTab('market')}>市场</button>
         <button type="button" role="tab" aria-selected={tab === 'installed'} className={`${css.tab}${tab === 'installed' ? ' ' + css.tabActive : ''}`} onClick={() => setTab('installed')}>已装</button>
-        <div className={css.searchBox}>
-          <Search size={14} className={css.searchIcon} />
-          <input
-            className={css.searchInput}
-            value={query}
-            onChange={e => setQuery(e.target.value)}
-            placeholder="搜索技能…"
-          />
-        </div>
-        {CATEGORIES.map(c => (
-          <button
-            key={c.id}
-            type="button"
-            className={`${css.filterChip}${category === c.id ? ' ' + css.filterChipActive : ''}`}
-            onClick={() => setCategory(c.id)}
-          >{c.label}</button>
-        ))}
+        {/* 市场 tab：在线市场占位「建设中」，搜索框与分类 chips 只服务本地列表，隐藏。 */}
+        {tab !== 'market' && (
+          <>
+            <div className={css.searchBox}>
+              <Search size={14} className={css.searchIcon} />
+              <input
+                className={css.searchInput}
+                value={query}
+                onChange={e => setQuery(e.target.value)}
+                placeholder="搜索技能…"
+              />
+            </div>
+            {CATEGORIES.map(c => (
+              <button
+                key={c.id}
+                type="button"
+                className={`${css.filterChip}${category === c.id ? ' ' + css.filterChipActive : ''}`}
+                onClick={() => setCategory(c.id)}
+              >{c.label}</button>
+            ))}
+          </>
+        )}
         <span className={css.headerSpacer} />
         <button type="button" className={css.addBtn} onClick={onImport}>
           <PackagePlus size={14} />导入技能
@@ -438,9 +448,25 @@ function SkillMarketView({ skills, error, tab, setTab, query, setQuery, category
               )
             }}
           />
+          {/* 市场 tab = 在线技能市场（未开放）：在「添加」磁贴后补一张「建设中」磁贴。
+              已装 tab 不渲染它（pool 已是完整技能列表）。 */}
+          {tab === 'market' && (
+            <div
+              className={mosaicTileClass({ size: 'big', tint: 'violet', glow: true, className: css.wipTile })}
+              data-tile-size="big"
+              aria-label="技能市场建设中"
+            >
+              <MosaicTileBody
+                icon={<Hammer size={30} />}
+                name="技能市场建设中"
+                version="SKILL"
+                sub="在线技能市场暂未开放。可点左侧「添加」从文件 / 文本 / 目录 / 内置导入技能。"
+              />
+            </div>
+          )}
           {/* 空态占位（无技能时）：独立的高 128 块，三张 128×128 虚线卡。
               末块本就允许截断（块生成器只为真实磁贴保证 808），故此处宽 3×128+2×8 = 400。 */}
-          {skills !== null && pool.length === 0 && error === null && (
+          {tab !== 'market' && skills !== null && pool.length === 0 && error === null && (
             <div className={mosaicStyles.mosaicBlock} data-mosaic-block="128">
               {[0, 1, 2].map(i => (
                 <div key={i} className={mosaicStyles.mosaicCol} data-col="128">
@@ -451,9 +477,10 @@ function SkillMarketView({ skills, error, tab, setTab, query, setQuery, category
           )}
         </div>
 
-        {/* 右：详情面板（点击磁贴就地展开；版本管理 + 绑定 Agent 常驻） */}
+        {/* 右：详情面板（点击磁贴就地展开；版本管理 + 绑定 Agent 常驻）。
+            市场 tab 无技能磁贴可选（仅「添加」+「建设中」），恒显示空态引导。 */}
         <aside className={css.detail} aria-label="技能详情">
-          {selected === null
+          {tab === 'market' || selected === null
             ? <DetailEmpty
                 title="选择一个技能"
                 desc="点左侧任意技能磁贴，在这里查看它的简介、版本历史与绑定关系。"

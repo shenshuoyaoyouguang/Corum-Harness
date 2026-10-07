@@ -173,6 +173,15 @@
   color: var(--dsw-alias-label-primary);
 }
 
+/* 「建设中」磁贴（市场 tab 占位）：脱离块几何单独渲染需显式尺寸；副文案放宽换行。 */
+.wipTile {
+  width: calc(264px * var(--corum-density-scale, 1));
+  height: calc(264px * var(--corum-density-scale, 1));
+  cursor: default;
+  margin-top: calc(12px * var(--corum-density-scale, 1));
+}
+.wipTile [data-tile-sub], .wipTile p { max-width: 230px; line-height: 1.5; }
+
 .hintText { margin: 0; font-size: calc(11.5px * var(--corum-ui-font-scale, 1)); color: var(--dsw-alias-label-tertiary); }
 
 /* ── 右侧详情简介面板：面板自身无 padding，内边距由 body 承担 ───────────────── */

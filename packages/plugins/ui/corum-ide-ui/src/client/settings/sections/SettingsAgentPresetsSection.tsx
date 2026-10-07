@@ -145,6 +145,13 @@ interface ParallelWorkDraft {
 
 const AGENT_DIMENSIONS = ['研发', '产品', '设计', '市场', '自媒体', '创作', '通用'] as const
 
+/**
+ * 「通用」栏固定成员（2026-10-06 用户定调）：指挥模式 / 全能助手 / 极简助手 / Corum 开发。
+ * 固定顺序、仅内置角色、仅代码层面可增（用户不设 UI 入口加通用成员）。
+ * 「专用」栏 = 其余内置角色 + 用户自建预设。
+ */
+const GENERAL_PRESET_IDS = ['conductor-lead', 'general-assistant', 'minimal-assistant', 'corum-dev'] as const
+
 /** 按 prompt 生成「擅长什么」摘要（取首行，去 markdown 标记）。 */
 function promptToMotto(prompt: string): string {
   const first = prompt.split('\n').find(l => l.trim().length > 0) ?? ''
@@ -248,6 +255,8 @@ function AgentCardPreview({ draft }: { draft: EditDraft }) {
 
 const OFFICIAL_MODE_META: Record<string, { label: string; desc: string }> = {
   standard: { label: '标准模式', desc: '功能完整的编码 Agent，支持文件编辑 / Shell / 检索 / Skills' },
+  // fork（corum）2026-10-06：补 conductor 翻译——此前缺，卡片上 conductor 显示英文 id。
+  conductor: { label: '指挥模式', desc: '只编排、不亲手执行：拆解并分派给子 Agent / 团队' },
   ptc: { label: 'PTC 模式', desc: '标准模式 + Code Mode SDK 多步操作' },
   minimal: { label: '极简模式', desc: '仅持久 bash + 编辑器的双工具 Agent' },
   cordis: { label: '创造模式', desc: '用于创建自定义 Agent preset' },
@@ -584,8 +593,42 @@ export function AgentPresetsSection() {
     return true
   })
 
-  const rows: AgentProfileSummary[][] = []
-  for (let i = 0; i < filtered.length; i += 3) rows.push(filtered.slice(i, i + 3))
+  // fork（corum）2026-10-06 用户定调：预设分「通用」「专用」两栏。
+  // 通用 = 固定 4 个内置角色（指挥模式/全能助手/极简助手/Corum 开发），固定顺序、
+  // 仅内置、仅代码层面可增；专用 = 其余全部内置角色 + 用户自建预设。
+  // 「官方基础模式」组在下方独立，不进这两栏。
+  const generalIds = GENERAL_PRESET_IDS.filter(id => filtered.some(p => p.id === id))
+  const generalProfiles = generalIds.map(id => filtered.find(p => p.id === id)!)
+  const specialProfiles = filtered.filter(p => !GENERAL_PRESET_IDS.includes(p.id as typeof GENERAL_PRESET_IDS[number]))
+
+  /** 按 3 列切行；不足 3 张的行在渲染层用 PlaceholderCard 补齐。 */
+  const toRows = (list: AgentProfileSummary[]): AgentProfileSummary[][] => {
+    const rows: AgentProfileSummary[][] = []
+    for (let i = 0; i < list.length; i += 3) rows.push(list.slice(i, i + 3))
+    return rows
+  }
+
+  /** 渲染一组名片（组标题 + 3 列网格 + 虚位补齐）。 */
+  const renderGroup = (title: string, list: AgentProfileSummary[], showIfEmpty: boolean) => {
+    if (list.length === 0 && !showIfEmpty) return null
+    return (
+      <div className={css.agentPresetGroup} key={title}>
+        <span className={css.agentPresetGroupTitle}>{title}</span>
+        <div className={css.agentCardGrid}>
+          {toRows(list).map((row, ri) => (
+            <div key={ri} className={css.agentGridRow}>
+              {row.map(p => (
+                <AgentCard key={p.id} profile={p} onClick={() => setView({ kind: 'edit', profile: p })} />
+              ))}
+              {row.length < 3 && Array.from({ length: 3 - row.length }, (_, i) => (
+                <PlaceholderCard key={`ph-${i}`} />
+              ))}
+            </div>
+          ))}
+        </div>
+      </div>
+    )
+  }
 
   return (
     <>
@@ -620,18 +663,8 @@ export function AgentPresetsSection() {
         <p className={css.hintText}>{corumProfiles.length === 0 ? '暂无 Agent 预设，点击右上角「新建预设」创建。' : '没有匹配的 Agent。'}</p>
       )}
 
-      <div className={css.agentCardGrid}>
-        {rows.map((row, ri) => (
-          <div key={ri} className={css.agentGridRow}>
-            {row.map(p => (
-              <AgentCard key={p.id} profile={p} onClick={() => setView({ kind: 'edit', profile: p })} />
-            ))}
-            {row.length < 3 && Array.from({ length: 3 - row.length }, (_, i) => (
-              <PlaceholderCard key={`ph-${i}`} />
-            ))}
-          </div>
-        ))}
-      </div>
+      {renderGroup('通用', generalProfiles, false)}
+      {renderGroup('专用', specialProfiles, false)}
 
       {officialProfiles.length > 0 && (
         <div className={css.officialGroup}>

@@ -1,9 +1,51 @@
-# 跨平台行尾：默认全平台 LF checkout，消除 Windows CI 的 CRLF 问题。
-# 根因：GitHub Actions windows-latest runner 默认 core.autocrlf=true，
-# checkout 时把 LF 转 CRLF，导致用 \n 做正则/indexOf 的测试失败。
-# .gitattributes 优先级高于 core.autocrlf，强制全平台 LF。
+# 换行策略：仓库内一律 LF（含 Windows 检出的工作区）。
+#
+# 背景（2026-10，Windows 适配开工前补）：本仓此前没有 .gitattributes，而
+# Git for Windows 的 core.autocrlf 默认为 true ⇒ 在 Windows 上克隆会把
+# *.sh 全部转成 CRLF：bash 直接报 `\r: command not found`，
+# scripts/verify-fork-drift.sh 的「fork 文件字节一致性」守卫还会出现**假红**
+# （换行不是代码问题，但会让守卫失去判别力）。
+#
+# 补这个文件是安全的：实测补充时索引内 1126 个文件为 LF、0 个为 CRLF，
+# 因此不会触发全仓重写。
 * text=auto eol=lf
 
-# Windows batch 入口保留 CRLF（cmd.exe 对 LF 的兼容性有边缘 case）。
-*.cmd text eol=crlf
+# 脚本与源码：必须 LF，任何平台上都一样。
+*.sh    text eol=lf
+*.mjs   text eol=lf
+*.js    text eol=lf
+*.cjs   text eol=lf
+*.ts    text eol=lf
+*.tsx   text eol=lf
+*.json  text eol=lf
+*.jsonl text eol=lf
+*.yml   text eol=lf
+*.yaml  text eol=lf
+*.md    text eol=lf
+*.css   text eol=lf
+*.html  text eol=lf
+
+# Windows 批处理由 Windows 工具链消费，保留 CRLF。
+# （*.ps1 不在此列：PowerShell 正常吃 LF。）
 *.bat text eol=crlf
+*.cmd text eol=crlf
+
+# 二进制：禁止任何换行转换（显式声明，不依赖内容嗅探）。
+*.icns   binary
+*.ico    binary
+*.png    binary
+*.jpg    binary
+*.jpeg   binary
+*.gif    binary
+*.webp   binary
+*.woff   binary
+*.woff2  binary
+*.ttf    binary
+*.otf    binary
+*.node   binary
+*.dll    binary
+*.exe    binary
+*.dylib  binary
+*.so     binary
+*.zip    binary
+*.tar.gz binary
