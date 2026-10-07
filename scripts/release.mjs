@@ -35,7 +35,7 @@
  * 退出码：0 = 正常；1 = 有阻断性问题（如工作树脏、两处版本不一致、无新提交）。
  */
 import { execFileSync } from 'node:child_process'
-import { readFileSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
@@ -335,9 +335,25 @@ function main() {
       + `TOP5 更新日志：\n${report.top.map((e, i) => `  ${i + 1}. ${e.scope === '' ? '' : e.scope + '：'}${e.text}`).join('\n')}\n`
       + (report.notes.length > 0 ? `\n注意事项：\n${notesLine}` : ''),
   }
-  writeFileSync(logPath, `${readFileSync(logPath, 'utf8').replace(/\n*$/, '\n')}${JSON.stringify(entryRow)}\n`, 'utf8')
+  // 台账追记：读全文 → 去尾空行 → 追加一行。
+  // ⚠️ 台账 `docs/tasks/log.jsonl` **不随仓分发**（.gitignore 的 docs/* 排除）⇒ 干净检出 /
+  //    新机器上它根本不存在，原来这里裸 readFileSync 会 ENOENT 崩在发布收尾——版本已写、
+  //    台账没写、退出码 1（2026-10-07 本机实测）。与读路径的 `catch { return [] }` 对齐：
+  //    缺文件当空台账、缺目录补建、写不动只警告，发布本身不因记账失败而判死。
+  let ledgerOk = true
+  try {
+    mkdirSync(dirname(logPath), { recursive: true })
+    const prev = existsSync(logPath) ? readFileSync(logPath, 'utf8').replace(/\n*$/, '\n') : ''
+    writeFileSync(logPath, `${prev}${JSON.stringify(entryRow)}\n`, 'utf8')
+  } catch (error) {
+    ledgerOk = false
+    process.stderr.write(`⚠️ 台账追记失败（版本递增已成立，不影响发布）：${error.message}\n`)
+  }
 
-  process.stdout.write(`\n✓ 已写入：${VERSION_FILES.join('、')} → ${next}\n✓ 已向 docs/tasks/log.jsonl 追记 release.v${next}\n`)
+  process.stdout.write(`\n✓ 已写入：${VERSION_FILES.join('、')} → ${next}\n`)
+  process.stdout.write(ledgerOk
+    ? `✓ 已向 docs/tasks/log.jsonl 追记 release.v${next}\n`
+    : '⚠️ docs/tasks/log.jsonl 未追记（见上）\n')
   process.stdout.write('  下一步：确认 TOP5 文案 → 提交 → 打 tag（git tag v' + next + '）。\n')
   return 0
 }
