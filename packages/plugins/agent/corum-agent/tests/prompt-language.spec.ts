@@ -33,7 +33,7 @@ describe('模型可见提示词必须全英文（用户 2026-09-10 定调）', (
     expect(CONDUCTOR_PERSONA).not.toMatch(CJK)
   })
 
-  it('内置角色 persona（PM / task / 25 岗位 / 指挥者）无 CJK', () => {
+  it('内置角色 persona（PM / 25 岗位 / 指挥者）无 CJK', () => {
     const src = source('builtin-profiles.ts')
     // 只取 BUILTIN_ROLES 区域 + 两个具名 prompt 常量，避免把昵称/标题（UI 文案）算进来。
     const rolesStart = src.indexOf('const BUILTIN_ROLES')
@@ -45,9 +45,9 @@ describe('模型可见提示词必须全英文（用户 2026-09-10 定调）', (
     const pm = src.match(/const PM_PROMPT = \[([\s\S]*?)\]\.join/)
     expect(pm?.[1], 'PM_PROMPT').toBeDefined()
     expect(pm?.[1]).not.toMatch(CJK)
-    const task = src.match(/const TASK_PROMPT = '([\s\S]*?)'\n/)
-    expect(task?.[1], 'TASK_PROMPT').toBeDefined()
-    expect(task?.[1]).not.toMatch(CJK)
+    // 2026-10-06 上游退役「Task 助理」：`TASK_PROMPT` 已随 `TASK_PROFILE_ID` 改指
+    // `general-assistant` 一并删除（兜底角色的 persona 在 BUILTIN_ROLES 内，已被上方扫描覆盖）
+    // ⇒ 原 `const TASK_PROMPT = '...'` 锚点消失，断言随之撤除（规则本身未放宽）。
   })
 
   // 项目模式剥离（2026-09-26）：以下三条断言随源文件**移仓**到闭源仓
