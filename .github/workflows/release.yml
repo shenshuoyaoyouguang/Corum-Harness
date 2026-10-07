@@ -1,0 +1,216 @@
+name: Release
+
+# 发布流水线（Phase 1）：打 tag → 两平台构建 → 建 **draft** Release（人工核对后点 Publish）。
+#
+# 三条来自 2026-10-07 规划、且都由本仓实测决定的设计约束：
+# ① 根 `pnpm pack` **不含**全量 build（= `pnpm --filter corum-desktop run pack`），而
+#    pack:host 的 `pnpm deploy` 会物化工作区包闭包（读各包 lib/）⇒ 必须先 `pnpm build`，
+#    否则 CI 上出残缺闭包（本机靠既有 lib/ 掩盖，CI 是干净检出）。
+# ② `scripts/release.mjs` 默认基线 = 「最近 tag」（git describe --tags --abbrev=0），打 tag
+#    后它自己就是最近 tag ⇒ 会判「无新提交」退出 1 ⇒ 这里必须显式传 `--since=<上一个 tag>`。
+# ③ 「注意事项」的数据源 docs/tasks/log.jsonl **不随仓分发**（docs/ 只放行 3 个文件）⇒ CI 里
+#    恒为 0 条（脚本缺失时 catch 返回 []，不崩）。发布说明因此只有安装提示 + TOP5。
+#
+# 产物事实（决定说明怎么写）：未签名（无 mac.identity / 无 Windows 证书）、mac 仅 arm64
+# （pack-app.mjs 硬编码 `--mac --arm64`，dmg+zip）、Windows 为 NSIS x64。
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: '要发布的 tag（如 v0.3.0）；彩排可留空'
+        required: false
+      dry_run:
+        description: '彩排：只构建、不建 Release'
+        type: boolean
+        default: true
+
+# 默认只读；只有 publish 提权（least privilege）。
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false   # 发布绝不半途取消（与 ci.yml 的 cancel-in-progress 相反，故意）
+
+env:
+  # tag：push 事件取 ref（= tag 名）；手动触发取输入（非彩排时必须给）。
+  RELEASE_TAG: ${{ github.event_name == 'push' && github.ref_name || inputs.tag }}
+  # 彩排开关：push 事件恒 0；workflow_dispatch 默认 true。
+  # 注意：job 级 if 不认 env 上下文，故 publish 的判定直接写在它的 if 里（见下）。
+  DRY_RUN: ${{ github.event_name == 'workflow_dispatch' && inputs.dry_run && '1' || '0' }}
+
+jobs:
+  # ── 门禁：tag ↔ 版本 ↔ 分支 ────────────────────────────────────────────────
+  # 拦两类经典事故：tag 与 package.json 版本不一致；tag 打在没过 CI 的提交上。
+  # 版本号住两处且必须同值（docs/VERSIONING.md §5.3，release.mjs 只保证 --write 时同值）。
+  gate:
+    name: gate · tag ↔ version
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0          # 「tag 在 main 上」判定需要完整历史 + tags
+
+      - name: 版本一致性与 tag 归属
+        run: |
+          set -euo pipefail
+          root=$(node -p "require('./package.json').version")
+          desk=$(node -p "require('./packages/desktop/package.json').version")
+          echo "root=$root desktop=$desk tag=${RELEASE_TAG:-<none>} dry_run=$DRY_RUN"
+          [ "$root" = "$desk" ] || {
+            echo "::error::两处 package.json 版本不一致（根 $root / desktop $desk）——先跑 node scripts/release.mjs --write"
+            exit 1
+          }
+          if [ "$DRY_RUN" = "1" ]; then
+            echo "::notice::彩排模式——跳过 tag ↔ 版本、tag 在 main 上 两项校验"
+            exit 0
+          fi
+          [ -n "$RELEASE_TAG" ] || { echo "::error::非彩排的手动触发必须给 tag 输入"; exit 1; }
+          [ "$RELEASE_TAG" = "v$root" ] || {
+            echo "::error::tag $RELEASE_TAG 与版本 v$root 不一致（tag 约定 = v + 版本号）"
+            exit 1
+          }
+          git fetch --quiet origin main
+          tag_sha=$(git rev-list -n 1 "$RELEASE_TAG")
+          git merge-base --is-ancestor "$tag_sha" origin/main || {
+            echo "::error::tag 提交 $tag_sha 不在 origin/main 上——只从 main 出包（避免发布没过 CI 的提交）"
+            exit 1
+          }
+          echo "::notice::gate 通过：$RELEASE_TAG @ $tag_sha 在 origin/main 上"
+
+  # ── 构建：两平台各自出安装包 ───────────────────────────────────────────────
+  # mac 与 win 不能交叉产出（electron-builder 需目标平台）⇒ 矩阵。
+  # fail-fast: false：两平台各自出结论（与 ci.yml 的 verify 同风格）。
+  build:
+    name: build · ${{ matrix.os }}
+    needs: gate
+    strategy:
+      fail-fast: false
+      matrix:
+        # 与 ci.yml 的 verify 矩阵取同样的两个平台（ubuntu 不出安装包）。
+        os: [macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0          # 与 ci.yml 一致：避免浅克隆引发的判定失真
+
+      - uses: pnpm/action-setup@v4          # 版本取自 package.json 的 packageManager（pnpm@11.7.0）
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22.x'
+          cache: pnpm
+
+      - name: Install
+        run: pnpm install --frozen-lockfile
+        timeout-minutes: 10
+
+      # 必须先全量 build：pack:host 的 pnpm deploy 物化闭包时读各包的 lib/（见文件头 ①）。
+      - name: Build（全量）
+        run: pnpm build
+        timeout-minutes: 25
+
+      - name: Pack（electron-builder）
+        run: pnpm pack
+        timeout-minutes: 45
+        env:
+          # 本仓无签名证书：显式关掉证书自动发现，省掉 mac 上一轮必然失败的签名探测。
+          # （Windows 侧不读这个变量；Phase 2 配证书时连同它一起调整。）
+          CSC_IDENTITY_AUTO_DISCOVERY: 'false'
+
+      # fail-closed：产物没出来就必须红，绝不让 publish 拿到空 artifacts 建出空 Release。
+      - name: 断言产物存在
+        shell: bash
+        run: |
+          set -euo pipefail
+          ls -la packages/desktop/dist || true
+          if [ "${{ runner.os }}" = "macOS" ]; then
+            n=$(ls packages/desktop/dist/*.dmg 2>/dev/null | wc -l || true)
+          else
+            n=$(ls packages/desktop/dist/*.exe 2>/dev/null | wc -l || true)
+          fi
+          [ "$n" -ge 1 ] || { echo "::error::${{ runner.os }} 未产出安装包（dist/ 清单见上）"; exit 1; }
+          echo "::notice::${{ runner.os }} 安装包 $n 个，进入 artifact"
+
+      # 只传面向用户的那几个；win-unpacked/ 与 builder-debug.yml 是中间物，不上传。
+      - uses: actions/upload-artifact@v4
+        with:
+          name: release-${{ matrix.os }}
+          path: |
+            packages/desktop/dist/*.dmg
+            packages/desktop/dist/*.zip
+            packages/desktop/dist/*.exe
+            packages/desktop/dist/*.blockmap
+          if-no-files-found: error
+          retention-days: 14
+
+  # ── 发布：两平台都成功才建 Release（原子；任一平台失败则什么都不发布）──
+  # 形态固定为 **draft**：未签名 + 首跑风险 ⇒ 先验产物再人工点 Publish。
+  publish:
+    name: publish · draft release
+    needs: [gate, build]
+    # job 级 if 不认 env 上下文 ⇒ 这里直接写判定（push 恒发布；dispatch 看 dry_run）。
+    if: github.event_name == 'push' || inputs.dry_run == false
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: write             # 建 Release 需要；其余 job 保持只读
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0          # 给 release.mjs 算「上一个 tag」用
+
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+          merge-multiple: true    # 两平台产物汇到一个目录（文件名不冲突）
+
+      - name: 生成发布说明
+        run: |
+          set -euo pipefail
+          {
+            echo "## 安装提示（未签名构建）"
+            echo ""
+            echo "- **macOS（仅 Apple Silicon / arm64）**：首次打开若被 Gatekeeper 拦，右键 →「打开」；或执行"
+            echo '  `xattr -dr com.apple.quarantine /Applications/Corum.app`'
+            echo "- **Windows**：SmartScreen 提示时选「更多信息」→「仍要运行」"
+            echo ""
+          } > notes.md
+
+          # ② 的落点：绝不能省略 --since（否则最近 tag 就是自己 ⇒ 0 提交 ⇒ 退出 1）。
+          prev=$(git describe --tags --abbrev=0 "$RELEASE_TAG^" 2>/dev/null || true)
+          if [ -z "$prev" ]; then
+            echo "::warning::找不到上一个 tag——本次只产出安装提示，更新日志请手补"
+            exit 0
+          fi
+          if node scripts/release.mjs --since="$prev" > preview.txt 2>&1; then
+            # 预览文本里从「## TOP5 更新日志」到结尾才是发布说明要的部分；
+            # 尾部的「（预览模式…）」是脚本给本地用的提示，剔掉。
+            sed -n '/^## TOP5 更新日志/,$p' preview.txt | sed '/^（预览模式/,$d' >> notes.md
+            echo "::notice::发布说明基线 = $prev"
+          else
+            echo "::warning::release.mjs 未产出（基线 $prev）——本次只产出安装提示，更新日志请手补"
+            tail -20 preview.txt || true
+          fi
+          echo '--- notes.md ---'; cat notes.md
+
+      # 幂等：同名 release 已存在则补传产物，不重复建。
+      - name: 建 draft Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          ver=$(node -p "require('./package.json').version")
+          ls -la artifacts
+          if gh release view "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            echo "::notice::release $RELEASE_TAG 已存在——补传/覆盖产物"
+            gh release upload "$RELEASE_TAG" artifacts/* --clobber --repo "$GITHUB_REPOSITORY"
+          else
+            gh release create "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" \
+              --title "Corum $ver" --draft --notes-file notes.md artifacts/*
+          fi
+          echo "::notice::完成——到 Releases 页面核对产物与说明，确认无误后点 Publish"
