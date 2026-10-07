@@ -82,6 +82,15 @@ export class HostBridgeClient {
     })
     this.child = spawn(this.hostNode, [this.bridgePath], {
       stdio: ['pipe', 'pipe', 'inherit'],
+      // windowsHide（2026-10-07 实机对照实验）：双击启动时父进程链无控制台
+      // （explorer → GUI 子系统 Corum.exe），而 host 是 CUI 子系统的 node.exe
+      // —— 不带 CREATE_NO_WINDOW 时 Windows 会为它新分配一个**可见**控制台
+      // 窗口（Windows Terminal / CASCADIA_HOSTING_WINDOW_CLASS，标题为
+      // node.exe 路径）。对照实验：wscript（无控制台父进程）启动必现此窗口，
+      // 有控制台父进程启动不现 —— 唯一变量就是父进程控制台，根因即此处缺
+      // windowsHide。注意 stdio[2] 的 'inherit' 传的是**句柄**，与是否继承
+      // 控制台无关，加 switches 不影响 stderr 走向。
+      windowsHide: true,
       env: this.injectedEnv ?? process.env,
       ...(this.cwd !== undefined && this.cwd !== '' ? { cwd: this.cwd } : {}),
     })

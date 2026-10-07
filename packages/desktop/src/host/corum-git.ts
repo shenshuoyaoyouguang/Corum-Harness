@@ -34,7 +34,9 @@ declare module '@deepseek-ai/cordis' {
 /** 在目录下跑一个 git 子命令；exit 0 resolve stdout，否则 reject 带 stderr。 */
 function runGit(cwd: string, args: string[]): Promise<{ stdout: string; stderr: string; code: number }> {
   return new Promise((resolvePromise, rejectPromise) => {
-    const child = spawn('git', args, { cwd, stdio: ['ignore', 'pipe', 'pipe'] })
+    // windowsHide：host 已由 bridge-client 以 windowsHide 启动（拿到隐藏控制台，后代默认
+    // 继承），故此处并非必需——显式写上是为了让「host 子进程全程零窗口」这条不变式无例外。
+    const child = spawn('git', args, { cwd, stdio: ['ignore', 'pipe', 'pipe'], windowsHide: true })
     let stdout = ''
     let stderr = ''
     child.stdout.on('data', (chunk: Buffer) => { stdout += chunk.toString() })

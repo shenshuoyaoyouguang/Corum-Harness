@@ -509,7 +509,9 @@ export class CorumPluginManager extends TypertRemoteService {
     return new Promise((resolvePromise) => {
       // Windows resolves pnpm through its .cmd shim, which spawn() refuses
       // without a shell since the CVE-2024-27980 hardening.
-      const child = spawn('pnpm', args, { cwd, shell: process.platform === 'win32' })
+      // windowsHide: shell:true 走 cmd.exe（CUI）。host 已有 bridge-client 给的隐藏控制台、
+      // cmd.exe 继承之，故此处并非必需——显式写上让「全程零窗口」不变式无例外。
+      const child = spawn('pnpm', args, { cwd, shell: process.platform === 'win32', windowsHide: true })
       let log = ''
       child.stdout.on('data', (chunk: Buffer) => { log += chunk.toString() })
       child.stderr.on('data', (chunk: Buffer) => { log += chunk.toString() })

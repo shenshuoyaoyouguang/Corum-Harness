@@ -377,6 +377,8 @@ function runGit(
     const child = spawn('git', [`--git-dir=${gitDir}`, ...args], {
       stdio: ['pipe', 'pipe', 'pipe'],
       env: { ...process.env, ...options.env },
+      // windowsHide：非必需（host 有隐藏控制台、git.exe 继承）——见 corum-git.ts 的不变式说明。
+      windowsHide: true,
     })
     let stdout = ''
     let stderr = ''
@@ -402,7 +404,7 @@ function toGitPath(rel: string): string {
  */
 function runGitIn(cwd: string, args: string[]): Promise<{ stdout: string; stderr: string; code: number }> {
   return new Promise((resolvePromise) => {
-    const child = spawn('git', args, { cwd, stdio: ['ignore', 'pipe', 'pipe'] })
+    const child = spawn('git', args, { cwd, stdio: ['ignore', 'pipe', 'pipe'], windowsHide: true })
     let stdout = ''
     let stderr = ''
     let settled = false
