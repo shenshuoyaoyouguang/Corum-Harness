@@ -40,10 +40,11 @@ jobs:
       - name: Typecheck (all packages)
         run: pnpm -r --filter './packages/**' run typecheck
 
-      - name: Unit tests (all packages that define test)
-        run: pnpm -r --filter './packages/**' --if-present run test
-
       - name: Build (all packages)
         # 全量构建是「能真正被加载的产物」的判据（AGENTS：编译过 ≠ 能加载）。
         # UI 包三步（tsc && tsdown && inline-css）在各自 build 脚本内闭环。
+        # 必须在 test 之前：部分测试 import 已构建包的 lib/ 入口。
         run: pnpm -r --filter './packages/**' run build
+
+      - name: Unit tests (all packages that define test)
+        run: pnpm -r --filter './packages/**' --if-present run test
