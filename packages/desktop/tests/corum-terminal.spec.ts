@@ -82,6 +82,7 @@ describe('terminalShell — 平台 shell 分派', () => {
 
   describe('win32', () => {
     beforeEach(() => {
+      vi.stubEnv('SHELL', '')
       vi.stubEnv('PATH', 'C:\\A;C:\\B')
     })
 
