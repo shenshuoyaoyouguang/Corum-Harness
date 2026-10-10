@@ -1,6 +1,6 @@
 {
   "name": "corum-harness",
-  "version": "0.3.0",
+"version": "0.3.0",
   "description": "corum Agent OS — a plugin-cluster distribution over the DeepSeek Harness foundation: my own Agent system (context, UI, agent, workflow) plus an Electron desktop carrier.",
   "private": true,
   "type": "module",
@@ -16,7 +16,13 @@
     "ci": "pnpm typecheck && pnpm test && pnpm guard",
     "shell:dev": "pnpm --filter corum-desktop run start",
     "shell:smoke": "pnpm --filter corum-desktop run smoke",
+    "smoke": "node scripts/corum-smoke.mjs --fast",
+    "smoke:launch": "node scripts/corum-smoke.mjs --fast --launch",
+    "smoke:full": "node scripts/corum-smoke.mjs --full --launch",
+    "smoke:packaged": "node scripts/corum-smoke.mjs --fast --launch --packaged",
+    "verify:electron-pin": "node scripts/verify-electron-pin.mjs",
     "pack": "pnpm --filter corum-desktop run pack",
+    "pack:linux": "pnpm --filter corum-desktop run pack:linux",
     "release": "node scripts/release.mjs"
   },
   "license": "Apache-2.0",

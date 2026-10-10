@@ -23,6 +23,7 @@ import { spawn } from 'node:child_process'
 import { dirname, extname, isAbsolute, resolve, sep } from 'node:path'
 import type { Context } from '@deepseek-ai/cordis'
 import { TypertRemoteService, Remote } from '@deepseek-ai/dsh-typert-protocol'
+import { getPlatformModule } from '../electron/platform/index.ts'
 // 拉入 corum 领域事件的 cordis Events 声明（'corum/file/changed' 等）——声明在
 // fork 包 @corum/corum-api-remotes 自包含（UNIFIED-EVENT-BUS §2.2 类型安全三段式
 // 之一），type-only import 编译期即擦除，无运行时依赖。
@@ -262,14 +263,11 @@ export class CorumFsService extends TypertRemoteService {
    */
   @Remote('reveal')
   async reveal(path: string): Promise<{ revealed: boolean }> {
-    const { real } = await resolveInsideRoot(this.rootPath(), path)
+const { real } = await resolveInsideRoot(this.rootPath(), path)
     const abs = requireReal(real, path)
-    // macOS open -R 揭示选中；Linux xdg-open 所在目录；Windows explorer /select。
-    const isWin = process.platform === 'win32'
-    const cmd = process.platform === 'darwin' ? 'open' : isWin ? 'explorer' : 'xdg-open'
-    const args = process.platform === 'darwin' ? ['-R', abs]
-      : isWin ? ['/select,', abs]
-      : [dirname(abs)]
+    // 平台选路收进 electron/platform/（P1：reveal 能力）——macOS open -R 揭示选中；
+    // Linux xdg-open 所在目录；Windows explorer /select。
+    const { cmd, args } = getPlatformModule().revealCommand(abs, dirname(abs))
     await new Promise<void>((resolvePromise, rejectPromise) => {
       // windowsHide：explorer 是 GUI 程序本不弹控制台，但显式抑制以保证
       // 「host 子进程全程零窗口」这条不变式无例外（新增调用方不必再逐个判）。

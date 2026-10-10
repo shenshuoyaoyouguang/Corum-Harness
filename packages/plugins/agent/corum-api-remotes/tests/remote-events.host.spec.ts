@@ -282,7 +282,7 @@ describe('corum 事件转发（P2-4 运行时守护）', () => {
     // （`carrierKeyOf(this)` 必须等于 `request.agent`，否则抛
     // `forwarded scoped event … must carry its Agent directly`）。
     // ⇒ `emit` 模式裸发；`waterfall` 模式必须经 `ctx.waterfall(target, …)` 且载荷带 agent。
-    const waterfallEvents = new Set(['corum/model-ask/request', 'corum/escalation/ask'])
+    const waterfallEvents = new Set(['corum/model-ask/request', 'corum/escalation/ask', 'corum/commit-card/request'])
     for (const event of CORUM_EVENTS) {
       const pending = iterator.next()
       if (waterfallEvents.has(event)) {

@@ -35,16 +35,16 @@ const NODE_DIR = join(DESKTOP_ROOT, 'build', 'node')
 
 const DEFAULT_VERSION = 'v26.4.0'
 /**
- * 默认平台/架构按当前进程平台选择：win32 → win32/x64，其余 → darwin/arm64。
- * 这样 `pack:node`（不传参数）在 win32 上下载 win-x64 运行时，在 darwin 上仍 arm64（向后兼容）。
+ * 默认平台/架构跟随当前进程（`process.platform` / `process.arch`），
+ * 与上游打包链一致：不传参数时按运行机物化对应平台/架构的 Node 运行时。
  */
-const DEFAULT_PLATFORM = process.platform === 'win32' ? 'win32' : 'darwin'
-const DEFAULT_ARCH = process.platform === 'win32' ? 'x64' : 'arm64'
+const DEFAULT_PLATFORM = process.platform
+const DEFAULT_ARCH = process.arch
 
 /**
  * 解析 CLI 参数与环境变量，确定目标平台/架构/版本。
  *
- * 优先级：CLI 参数 > 环境变量 > 默认值（按 process.platform：win32→win32/x64，其余→darwin/arm64）。
+ * 优先级：CLI 参数 > 环境变量 > 默认值（process.platform / process.arch）。
  * @param {string[]} argv - process.argv.slice(2)
  * @returns {{ platform: string, arch: string, version: string | undefined, help: boolean }}
  */

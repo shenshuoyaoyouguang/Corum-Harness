@@ -1,10 +1,14 @@
 {
   "name": "corum-desktop",
   "description": "Corum（矩道）desktop carrier: Electron shell + host bridge + IPC transport, booting the corum profile over the official dsh foundation (zero HTTP).",
-  "version": "0.3.0",
+"version": "0.3.0",
   "type": "module",
   "private": true,
-  "author": "corum",
+  "author": {
+    "name": "corum",
+    "email": "corum@localhost"
+  },
+  "homepage": "https://github.com/kukucaiCndy/Corum-Harness",
   "main": "lib/main.js",
   "bin": {
     "corum-desktop": "lib/cli.js"
@@ -46,9 +50,19 @@
     "start": "node lib/cli.js",
     "smoke": "node lib/cli.js --smoke",
     "pack:host": "node scripts/pack-macos.mjs",
+    "pack:host:mac": "node scripts/pack-macos.mjs --platform=darwin --arch=arm64",
+    "pack:host:linux": "node scripts/pack-macos.mjs --platform=linux --arch=x64",
+    "pack:host:win": "node scripts/pack-macos.mjs --platform=win32 --arch=x64",
     "pack:node": "node scripts/fetch-node.mjs",
-    "pack:app": "node scripts/pack-app.mjs",
-    "pack": "npm run build && npm run pack:host && npm run pack:node && npm run pack:app"
+    "pack:node:mac": "node scripts/fetch-node.mjs --platform=darwin --arch=arm64",
+    "pack:node:linux": "node scripts/fetch-node.mjs --platform=linux --arch=x64",
+    "pack:node:win": "node scripts/fetch-node.mjs --platform=win32 --arch=x64",
+    "pack:app": "electron-builder --mac --arm64",
+    "pack:app:linux": "electron-builder --linux --x64",
+    "pack:app:win": "electron-builder --win --x64",
+    "pack": "node scripts/pack.mjs darwin",
+    "pack:linux": "node scripts/pack.mjs linux",
+    "pack:win": "node scripts/pack.mjs win32"
   },
   "build": {
     "appId": "com.corum.agentos",
@@ -95,14 +109,36 @@
         "CFBundleDisplayName": "矩道"
       }
     },
+"linux": {
+      "category": "Development;IDE",
+      "icon": "assets/icon.png",
+      "synopsis": "Corum 矩道 · Agent OS 桌面端",
+      "description": "Corum（矩道）Agent OS 桌面端：会话式智能体工作区 + IDE。",
+      "target": [
+        "AppImage",
+        "deb"
+      ],
+      "desktop": {
+        "Name": "Corum",
+        "Name[zh_CN]": "矩道 Corum",
+        "Comment": "Corum Agent OS",
+        "Comment[zh_CN]": "矩道 · 智能体操作系统"
+      }
+    },
     "win": {
       "icon": "assets/icon.ico",
-      "target": ["nsis"],
-      "appId": "com.corum.agentos"
+      "target": [
+        "nsis",
+        "zip"
+      ]
     },
     "nsis": {
       "oneClick": false,
-      "allowToChangeInstallationDirectory": true
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "Corum"
     }
   },
   "license": "Apache-2.0",
@@ -127,6 +163,7 @@
     "@corum/corum-memory": "workspace:*",
     "@corum/corum-ollama": "workspace:*",
     "@corum/corum-orchestration": "workspace:*",
+    "@corum/corum-platform": "workspace:*",
     "@corum/corum-sandbox-local": "workspace:*",
     "@corum/corum-session-archive": "workspace:*",
     "@corum/corum-session-queue-revert": "workspace:*",
@@ -137,6 +174,7 @@
     "@corum/corum-ui-approval": "workspace:*",
     "@corum/corum-ui-base": "workspace:*",
     "@corum/corum-ui-chat": "workspace:*",
+    "@corum/corum-ui-commit-card": "workspace:*",
     "@corum/corum-ui-conversation": "workspace:*",
     "@corum/corum-ui-model-ask": "workspace:*",
     "@corum/corum-ui-model-selection": "workspace:*",
@@ -224,7 +262,7 @@
     "@types/node": "^22.20.0",
     "@types/react": "~18.3.31",
     "@types/react-dom": "~18.3.0",
-    "electron": "^43.4.0",
+    "electron": "43.4.1",
     "electron-builder": "^25.1.8",
     "tsdown": "^0.22.2",
     "typescript": "^6.0.3",

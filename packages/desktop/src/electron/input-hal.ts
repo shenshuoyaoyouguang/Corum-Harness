@@ -8,8 +8,9 @@
  *   - macOS：koffi 调 CoreGraphics 的 CGEventSourceButtonState（Quartz 事件
  *     源状态，全局、无需辅助功能权限即可读左键）。
  *   - Windows：GetAsyncKeyState(VK_LBUTTON)（user32，同为全局键状态）。
- *   - Linux：X11 XQueryPointer 的 button mask（Xlib；Wayland 下无全局 API，
- *     降级为「总是按住」即禁用自动吸附，由后续 Wayland 适配补齐）。
+ *   - Linux：**尚未实现**（`createLinuxHal` 恒返回不可用）。理论上可走 X11
+ *     XQueryPointer 的 button mask，但 Wayland 下没有全局指针 API，且本层至今
+ *     未写；后果仅是浮窗「松手自动吸附」不可用。
  *
  * 任何平台加载失败（库缺失 / 符号变化 / 非桌面环境）都安全降级为
  * 「查询不可用」，调用方据此选择保守行为（不做自动吸附），绝不抛错。
@@ -99,7 +100,13 @@ function createLinuxHal(): InputHal {
   return nullHal('linux adapter not yet implemented')
 }
 
-/** 创建当前平台的输入 HAL（失败安全降级）。 */
+/**
+ * 创建当前平台的输入 HAL（失败安全降级）。
+ *
+ * 平台选路以**运行时平台**为准（行为事实源）；`capabilities.globalPointer=false`
+ * 的平台（Linux Wayland 等）走 createLinuxHal → nullHal（不可用，调用方退化为
+ * 保守行为）。这是「该平台当前无全局指针能力」的显式降级，不是错误。
+ */
 export function createInputHal(): InputHal {
   const os = platform()
   if (os === 'darwin') return createMacHal()

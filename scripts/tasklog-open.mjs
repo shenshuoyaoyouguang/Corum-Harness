@@ -35,6 +35,41 @@ const LOG = join(ROOT, 'docs/tasks/log.jsonl')
 /** 未关闭 = 最后一条不是 done/dropped。 */
 const CLOSED = new Set(['done', 'dropped'])
 
+/**
+ * 事实类 kind：记「发生过什么 / 定了什么」，**不是可执行待办**，因此永远不会 done。
+ *
+ * 由台账自身的定义（`tooling.tasklog`，L12/L14）：append-only JSONL 是**事实**，
+ * decision 是唯一能「赢」的条目；lesson/evidence/risk/constraint 同理是留痕。
+ * 把它们计进「未关闭」会让那个数字失去意义 —— 2026-10-06 实测：渲染器报「未关闭
+ * 361 条」，其中 226 条是事实、57 条是已终态（resolved/verified）被算作未关闭，
+ * **真实待办只有 78 条**。故清单按 actionability 分栏，`--count` 报两个数。
+ */
+const FACT_KINDS = new Set([
+  'decision', 'lesson', 'constraint', 'risk', 'evidence', 'rule', 'analysis',
+  'survey', 'audit', 'measure', 'docs', 'finding', 'diagnosis', 'tooling',
+  'upgrade', 'plan', 'design', 'methodology-fix', 'doc-fix',
+])
+
+/**
+ * 「等动作」状态：**无论 kind 是什么，一律算待办**。
+ *
+ * 这条是「状态优先于 kind」的修正 —— 只用 kind 判会把真待办埋进事实栏：实测
+ * `plan.mcp-pool-round1..6`（`in_progress`）、`upgrade.fork-11`（`awaiting-user-decision`）
+ * 一类虽然 kind 是事实类，状态却明写着「正在做 / 等用户拍板」，它们是**可执行待办**。
+ */
+const ACTION_STATUSES = new Set([
+  'doing', 'in_progress', 'planned', 'awaiting-approval', 'awaiting-user-decision',
+  'ready-for-user-decision', 'partial', 'pending', 'open-recorded-not-fixed',
+  'unit-verified-device-unverified', 'unmeasured', 'verified-partial',
+  'improved-not-solved', 'inconclusive-for-main-list',
+])
+
+/** actionability：等动作状态优先，其次看 kind 是否为纯留痕。 */
+export function actionabilityOf(row) {
+  if (ACTION_STATUSES.has(row.status)) return 'work'
+  return FACT_KINDS.has(row.kind ?? 'todo') ? 'fact' : 'work'
+}
+
 function loadEntries(path) {
   const rows = []
   const bad = []
@@ -83,6 +118,7 @@ function build(rows) {
         key,
         status: last.status ?? 'open',
         kind: last.kind ?? 'todo',
+        actionability: actionabilityOf(last),
         id: last.id ?? key,
         scope: Array.isArray(last.scope) ? last.scope : [],
         created: last.created ?? '',
@@ -97,10 +133,17 @@ function build(rows) {
 
 function render(open, conflicts) {
   const out = []
-  out.push(`### 未关闭 ${open.length} 条（由 \`scripts/tasklog-open.mjs\` 从 \`docs/tasks/log.jsonl\` 渲染，勿手改）`)
+  const work = open.filter(row => row.actionability === 'work')
+  const fact = open.filter(row => row.actionability === 'fact')
+  out.push(`### 未关闭 ${work.length} 条待办（另有 ${fact.length} 条事实类条目，见文末分栏）`)
+  out.push('')
+  out.push(`> 由 \`scripts/tasklog-open.mjs\` 从 \`docs/tasks/log.jsonl\` 渲染，**勿手改**。`)
+  out.push('> 「待办」= 可执行且未收口的条目；`decision`/`lesson`/`evidence` 一类记的')
+  out.push('> 是「发生过什么、定了什么」，永远不会 done，故单列 —— 混在一起报会让那个')
+  out.push('> 数字失去判别力（2026-10-06 实测：混报 361 条，其中 57 条其实已是终态）。')
   out.push('')
   let scope = null
-  for (const row of open) {
+  for (const row of work) {
     const group = row.scope[0] ?? '(no scope)'
     if (group !== scope) {
       scope = group
@@ -109,6 +152,14 @@ function render(open, conflicts) {
     const who = row.author === 'user' ? '用户' : 'Agent'
     out.push(`- \`${row.status}\` **${row.key}**（${row.created}，${who}）— ${row.summary}`)
   }
+  out.push('')
+  out.push(`<details><summary>事实类条目 ${fact.length} 条（decision / lesson / evidence …，非待办）</summary>`)
+  out.push('')
+  for (const row of fact) {
+    out.push(`- \`${row.status}\` **${row.key}**（${row.created}，${row.kind}）`)
+  }
+  out.push('')
+  out.push('</details>')
   out.push('')
   if (conflicts.length > 0) {
     out.push(`### 同 key 异值冲突 ${conflicts.length} 组（curation 待办）`)
@@ -150,7 +201,9 @@ if (mode === '--json') {
   }
   console.log(`行数（真解析）      : ${rows.length}${bad.length > 0 ? `（另有坏行 ${bad.length}）` : ''}`)
   console.log(`唯一 key（key ?? id）: ${byKey.size}`)
-  console.log(`未关闭              : ${open.length}`)
+  console.log(`未关闭（合计）      : ${open.length}`)
+  console.log(`  ├ 待办（可执行）  : ${open.filter(r => r.actionability === 'work').length}`)
+  console.log(`  └ 事实类（非待办）: ${open.filter(r => r.actionability === 'fact').length}`)
   console.log(`冲突                : ${conflicts.length} 组`)
   console.log(`字段覆盖            : 带 key ${rows.filter(r => r.key !== undefined).length} 行 / 带 id ${rows.filter(r => r.id !== undefined).length} 行`)
   console.log(`未关闭按 kind       : ${Object.entries(kinds).sort((a, b) => b[1] - a[1]).map(([k, n]) => `${k}=${n}`).join(' ')}`)
@@ -159,7 +212,7 @@ if (mode === '--json') {
     for (const b of bad) console.error(`log.jsonl:${b.line} 不是合法 JSON：${b.text}`)
   }
   for (const c of conflicts) console.error(`同 key 异值：${c.key} → ${c.values.join(' | ')}`)
-  console.log(`未关闭 ${open.length} 条；冲突 ${conflicts.length} 组；坏行 ${bad.length} 条`)
+  console.log(`未关闭 ${open.length} 条（待办 ${open.filter(r => r.actionability === 'work').length} / 事实类 ${open.filter(r => r.actionability === 'fact').length}）；冲突 ${conflicts.length} 组；坏行 ${bad.length} 条`)
   process.exit(bad.length > 0 || conflicts.length > 0 ? 1 : 0)
 } else {
   process.stdout.write(`${render(open, conflicts)}\n`)
