@@ -78,7 +78,7 @@ process.stderr.write(`[pack] target=${platform}/${arch} 四步：${steps.map(([n
 
 for (const [name, cmd] of steps) {
   process.stderr.write(`[pack] ── ${name} ──\n`)
-  const result = spawnSync('npm', cmd, { stdio: 'inherit', env: process.env })
+  const result = spawnSync('npm', cmd, { stdio: 'inherit', env: process.env, shell: process.platform === 'win32' })
   if (result.status !== 0) fail(`${name} 失败（exit ${result.status ?? 'signal'}），链终止。`)
 }
 

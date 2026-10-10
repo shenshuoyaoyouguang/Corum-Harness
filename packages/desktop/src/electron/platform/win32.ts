@@ -32,6 +32,12 @@ export const win32Platform: PlatformModule = {
     pathSep: '\\',
   },
   terminalShell(): TerminalShell {
+    // 尊重显式 SHELL 环境变量（如 Git Bash）：设了非空值就直接用，不走探测链。
+    const explicitShell = process.env.SHELL && process.env.SHELL.trim()
+    if (explicitShell) {
+      const isPowerShell = /pwsh|powershell/i.test(explicitShell)
+      return { shell: explicitShell, args: isPowerShell ? ['-NoLogo'] : ['-l'] }
+    }
     const shell = firstOnPath(['pwsh.exe', 'powershell.exe']) ?? 'cmd.exe'
     // cmd.exe 不认识 -NoLogo；pwsh/powershell 用它抑制版权头。
     return { shell, args: shell === 'cmd.exe' ? [] : ['-NoLogo'] }

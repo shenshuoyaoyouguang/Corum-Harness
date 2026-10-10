@@ -14,7 +14,7 @@ export const darwinPlatform: PlatformModule = {
     pathSep: '/',
   },
   terminalShell(): TerminalShell {
-    return { shell: process.env.SHELL ?? '/bin/zsh', args: ['-l'] }
+    return { shell: (process.env.SHELL && process.env.SHELL.trim()) || '/bin/zsh', args: ['-l'] }
   },
   revealCommand(realPath: string): RevealCommand {
     // macOS `open -R` 直接揭示并选中目标。

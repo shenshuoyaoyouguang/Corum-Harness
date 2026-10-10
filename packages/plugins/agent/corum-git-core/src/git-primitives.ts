@@ -220,9 +220,12 @@ function isArtifactPath(filePath: string): boolean {
       // 目录模式：路径以 `dir/` 开头（任意深度），或路径等于 `dir`
       if (normalized === pattern.slice(0, -1)) return true
       if (normalized.startsWith(pattern) || normalized.startsWith(pattern.slice(0, -1) + '/')) return true
-    } else {
-      // 文件/后缀模式：路径以该模式结尾
+    } else if (pattern.startsWith('.')) {
+      // 后缀模式（如 `.tsbuildinfo`）：路径以该模式结尾
       if (normalized.endsWith(pattern)) return true
+    } else {
+      // 完整文件名模式（如 `main.js`）：路径等于该文件名，或以 `/<pattern>` 结尾
+      if (normalized === pattern || normalized.endsWith('/' + pattern)) return true
     }
   }
   return false

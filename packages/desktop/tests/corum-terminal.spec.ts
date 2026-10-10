@@ -57,12 +57,20 @@ function withShellUnset<T>(fn: () => T): T {
 }
 
 describe('terminalShell — 平台 shell 分派', () => {
+  afterEach(() => vi.unstubAllEnvs())
+
   describe('darwin / linux', () => {
-    it('SHELL 未设置时回退 /bin/zsh + -l', () => {
+    it('SHELL 未设置时 darwin 回退 /bin/zsh、linux 回退 /bin/sh + -l', () => {
       withShellUnset(() => {
         expect(darwinPlatform.terminalShell()).toEqual({ shell: '/bin/zsh', args: ['-l'] })
-        expect(linuxPlatform.terminalShell()).toEqual({ shell: '/bin/zsh', args: ['-l'] })
+        expect(linuxPlatform.terminalShell()).toEqual({ shell: '/bin/sh', args: ['-l'] })
       })
+    })
+
+    it('SHELL 为空串时回退到平台默认 shell', () => {
+      vi.stubEnv('SHELL', '')
+      expect(darwinPlatform.terminalShell()).toEqual({ shell: '/bin/zsh', args: ['-l'] })
+      expect(linuxPlatform.terminalShell()).toEqual({ shell: '/bin/sh', args: ['-l'] })
     })
 
     it('SHELL 显式设置时尊重该设置', () => {
@@ -96,6 +104,20 @@ describe('terminalShell — 平台 shell 分派', () => {
       const r = win32Platform.terminalShell()
       expect(r.shell).toBe('cmd.exe')
       expect(r.args).toEqual([])
+    })
+
+    it('SHELL 显式设置时尊重该设置（如 Git Bash）', () => {
+      vi.stubEnv('SHELL', 'C:\\Program Files\\Git\\bin\\bash.exe')
+      const r = win32Platform.terminalShell()
+      expect(r.shell).toBe('C:\\Program Files\\Git\\bin\\bash.exe')
+      expect(r.args).toEqual(['-l'])
+    })
+
+    it('SHELL 设为 pwsh 时用 -NoLogo 参数', () => {
+      vi.stubEnv('SHELL', 'pwsh.exe')
+      const r = win32Platform.terminalShell()
+      expect(r.shell).toBe('pwsh.exe')
+      expect(r.args).toEqual(['-NoLogo'])
     })
   })
 })

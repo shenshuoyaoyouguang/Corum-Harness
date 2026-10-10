@@ -10,7 +10,7 @@ remote_file="${1:?需要远程文件}"; local_path="${2:?需要本地路径}"; c
 tmp="$(mktemp -d)"; trap 'rm -rf "$tmp"' EXIT
 
 echo "[chunked-pull] 远端分块中…"
-"$REMOTE" run "rm -rf ${remote_file}.cpart-*; split -b $chunk -d -a 3 '$remote_file' '${remote_file}.cpart-' && ls ${remote_file}.cpart-* | wc -l" 2>&1 | tail -1 > "$tmp/count"
+"$REMOTE" run "rm -rf '${remote_file}.cpart-*'; split -b $chunk -d -a 3 '$remote_file' '${remote_file}.cpart-' && ls '${remote_file}.cpart-*' | wc -l" 2>&1 | tail -1 > "$tmp/count"
 total=$(tr -d '\r\n' < "$tmp/count")
 echo "[chunked-pull] 共 $total 块"
 
@@ -33,7 +33,7 @@ for idx in $(seq -w 0 $((total - 1))); do
 done
 
 cat "$tmp"/part-* > "$local_path"
-"$REMOTE" run "rm -f ${remote_file}.cpart-*" >/dev/null 2>&1
+"$REMOTE" run "rm -f '${remote_file}.cpart-*'" >/dev/null 2>&1
 
 want=$("$REMOTE" run "sha256sum '$remote_file' | cut -d' ' -f1" 2>/dev/null | tr -d '\r\n' | tail -c 64)
 got=$(shasum -a 256 "$local_path" | awk '{print $1}')

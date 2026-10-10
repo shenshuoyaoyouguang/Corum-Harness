@@ -92,7 +92,11 @@ export class PlatformService extends TypertRemoteService {
    */
   @Remote('get')
   getPlatform(): CorumPlatform {
-    return process.platform as CorumPlatform
+    const p = process.platform
+    if (p !== 'darwin' && p !== 'linux' && p !== 'win32') {
+      throw new Error(`platform: unsupported runtime platform '${p}' (expected darwin|linux|win32)`)
+    }
+    return p
   }
 
   /**

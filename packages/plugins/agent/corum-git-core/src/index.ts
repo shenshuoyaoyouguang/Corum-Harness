@@ -297,7 +297,11 @@ async function handleTurnStoppingCommit(ctx: Context, agent: Agent, turn: number
   } catch (error: unknown) {
     const detail = error instanceof Error ? error.message : String(error)
     ctx.logger.warn(`git-core: could not steer agent ${sessionId} for commit: ${detail}`)
-    // steer 失败 → 不无限阻塞，让 turn 关闭（改动留在树里）。
+    // steer 失败 → 发终态更新避免卡片卡死在 pending，然后放行 turn（改动留在树里）。
+    emitCommitCardUpdate(ctx, sessionId, turn, {
+      status: 'stashed',
+      progressText: `steer 注入失败：${detail}（改动仍留在工作区，turn 已放行）`,
+    })
     return
   }
 

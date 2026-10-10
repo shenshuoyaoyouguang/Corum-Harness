@@ -48,6 +48,11 @@ jobs:
         run: pnpm install --frozen-lockfile
         shell: bash
 
+      - name: Build（全仓——pack:host 的 pnpm deploy 读各包 lib/）
+        run: pnpm build
+        shell: bash
+        timeout-minutes: 25
+
       - name: Linux 出包前置（AppImage 需 libfuse2）
         if: matrix.platform == 'linux'
         run: sudo apt-get update && sudo apt-get install -y libfuse2 rpm

@@ -188,6 +188,16 @@
   transition: width 0.3s ease;
 }
 
+.progressIndeterminate {
+  width: 40%;
+  animation: progressIndeterminate 1.4s ease-in-out infinite;
+}
+
+@keyframes progressIndeterminate {
+  0% { transform: translateX(-100%); }
+  100% { transform: translateX(350%); }
+}
+
 /* ── 已完成结果区：竖向 gap4 ── */
 .resultList {
   display: flex;

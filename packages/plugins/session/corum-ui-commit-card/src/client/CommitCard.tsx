@@ -13,10 +13,12 @@
 import { GitBranch, Loader, Check } from 'lucide-react'
 import { useSyncExternalStore } from 'react'
 import type { PendingCommitCard } from './contract.ts'
+import type { CommitCardKey } from './locales.ts'
 import css from './CommitCard.module.css'
 
 export interface CommitCardProps {
   pending: PendingCommitCard
+  t: (key: CommitCardKey) => string
 }
 
 /** 状态对应的 chip 样式。 */
@@ -30,14 +32,14 @@ function chipClass(status: PendingCommitCard['status']): string {
   }
 }
 
-/** 状态对应的 chip 文本。 */
-function chipText(status: PendingCommitCard['status']): string {
+/** 状态对应的 chip 文本 key。 */
+function chipTextKey(status: PendingCommitCard['status']): CommitCardKey {
   switch (status) {
-    case 'pending': return '待提交'
-    case 'progress': return '进行中'
-    case 'done': return '已完成'
-    case 'stashed': return '已暂存'
-    default: return ''
+    case 'pending': return 'pending'
+    case 'progress': return 'progress'
+    case 'done': return 'done'
+    case 'stashed': return 'stashed'
+    default: return 'pending'
   }
 }
 
@@ -63,7 +65,7 @@ function usePendingStatus(pending: PendingCommitCard): PendingCommitCard {
  * 提交卡片组件。
  * @param props - 待展示项。
  */
-export function CommitCard({ pending }: CommitCardProps) {
+export function CommitCard({ pending, t }: CommitCardProps) {
   const p = usePendingStatus(pending)
   const { request } = p
   const status = p.status
@@ -80,14 +82,14 @@ export function CommitCard({ pending }: CommitCardProps) {
             <GitBranch size={11} />
           </span>
           <span className={css.headerTx}>
-            <span className={css.title}>整理改动并提交</span>
+            <span className={css.title}>{t('title')}</span>
             <span className={css.subtitle}>
               本 turn 有 {request.effectiveFiles} 个文件改动 · 按逻辑主题分笔提交
             </span>
           </span>
           <span className={chipClass(status)}>
             <span className={css.chipDot} />
-            {chipText(status)}
+            {t(chipTextKey(status))}
           </span>
         </div>
 
@@ -121,7 +123,7 @@ export function CommitCard({ pending }: CommitCardProps) {
         {status === 'progress' && (
           <>
             <div className={css.progressTrack}>
-              <div className={css.progressFill} style={{ width: '40%' }} />
+              <div className={`${css.progressFill} ${css.progressIndeterminate}`} />
             </div>
             <div className={css.statusRow}>
               <span className={css.statusIcon}>

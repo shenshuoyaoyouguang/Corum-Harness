@@ -49,7 +49,7 @@
     "test": "vitest run",
     "start": "node lib/cli.js",
     "smoke": "node lib/cli.js --smoke",
-    "pack:host": "node scripts/pack-macos.mjs",
+
     "pack:host:mac": "node scripts/pack-macos.mjs --platform=darwin --arch=arm64",
     "pack:host:linux": "node scripts/pack-macos.mjs --platform=linux --arch=x64",
     "pack:host:win": "node scripts/pack-macos.mjs --platform=win32 --arch=x64",

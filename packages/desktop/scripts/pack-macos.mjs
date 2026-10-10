@@ -22,6 +22,7 @@
  */
 
 import { spawn } from 'node:child_process'
+import { createHash } from 'node:crypto'
 import { existsSync, readFileSync } from 'node:fs'
 import { cp, lstat, mkdir, readdir, readFile, readlink, realpath, rm, writeFile } from 'node:fs/promises'
 import { dirname, join, resolve, sep } from 'node:path'
@@ -81,7 +82,10 @@ function resolveTargetArch() {
   }
   const fromEnv = process.env.CORUM_TARGET_ARCH
   if (fromEnv !== undefined && fromEnv !== '') return fromEnv
-  return process.arch
+  throw new Error(
+    'pack-macos: 必须显式指定目标架构（--arch=arm64|x64，或 CORUM_TARGET_ARCH）。'
+    + '不要从构建机推断：Apple Silicon 的 process.arch=arm64，而 Windows/Linux 目标通常是 x64。',
+  )
 }
 
 const CORUM_TARGET_PLATFORM = resolveTargetPlatform()
@@ -519,6 +523,28 @@ async function deployHost() {
 }
 
 /**
+ * Read the SHA-512 integrity hash for a package from `pnpm-lock.yaml`.
+ *
+ * The lockfile stores entries as `'${name}@${version}':` followed by
+ * `resolution: {integrity: sha512-<base64>}`. We do a lightweight text scan
+ * rather than a full YAML parse — the format is stable and we only need one
+ * field.
+ *
+ * @returns The base64 hash (without the `sha512-` prefix), or `null` if not found.
+ */
+function readLockfileIntegrity(name, version) {
+  const lockfilePath = join(root, 'pnpm-lock.yaml')
+  if (!existsSync(lockfilePath)) return null
+  const content = readFileSync(lockfilePath, 'utf8')
+  const key = `  '${name}@${version}':`
+  const keyIdx = content.indexOf(key)
+  if (keyIdx === -1) return null
+  const slice = content.slice(keyIdx, keyIdx + 200)
+  const match = slice.match(/integrity:\s*sha512-([A-Za-z0-9+/=]+)/)
+  return match ? match[1] : null
+}
+
+/**
  * Top up the closure with the **target platform's** platform-specific optional
  * packages (e.g. `@koromix/koffi-win32-x64`).
  *
@@ -539,8 +565,8 @@ async function deployHost() {
  * `koffi` resolves its binary at `${koffi}/../../../@koromix/koffi-<os>-<arch>`
  * (or via `process.resourcesPath` fallbacks). So we fetch the target platform's
  * package tarball straight from the registry — pinned to the version the
- * workspace already resolved, and **verified against the lockfile integrity** —
- * and place it exactly where that lookup expects it.
+ * workspace already resolved — verify its SHA-512 integrity against
+ * `pnpm-lock.yaml`, and place it exactly where that lookup expects it.
  *
  * Only `koffi` currently has platform-specific optional deps (verified: `node-pty`
  * ships all prebuilds inside one package, so it is already platform-complete;
@@ -568,7 +594,20 @@ async function topUpPlatformPackages(targetPlatform, targetArch) {
       const response = await fetch(url)
       if (!response.ok) throw new Error(`pack-macos: platform top-up failed: HTTP ${response.status} for ${url}`)
       const tgz = join(tmpdir(), `${name.split('/')[1]}-${version}.tgz`)
-      await writeFile(tgz, Buffer.from(await response.arrayBuffer()))
+      const tgzBuffer = Buffer.from(await response.arrayBuffer())
+      await writeFile(tgz, tgzBuffer)
+      // Verify SHA-512 integrity against pnpm-lock.yaml before extracting.
+      const expectedIntegrity = readLockfileIntegrity(name, version)
+      if (expectedIntegrity) {
+        const actualHash = createHash('sha512').update(tgzBuffer).digest('base64')
+        if (actualHash !== expectedIntegrity) {
+          await rm(tgz, { force: true })
+          throw new Error(`pack-macos: integrity mismatch for ${name}@${version}: expected sha512-${expectedIntegrity.slice(0, 16)}…, got sha512-${actualHash.slice(0, 16)}…`)
+        }
+        console.log(`[pack-macos] platform top-up: integrity verified for ${name}@${version}`)
+      } else {
+        console.warn(`[pack-macos] platform top-up: WARNING — no integrity hash found in pnpm-lock.yaml for ${name}@${version}, skipping verification`)
+      }
       const extractDir = join(tmpdir(), `corum-platform-${process.pid}`)
       await rm(extractDir, { recursive: true, force: true })
       await mkdir(extractDir, { recursive: true })

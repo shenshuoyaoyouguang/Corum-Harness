@@ -562,7 +562,7 @@ assert_not_sandboxed() {
   log "⚠️ 检测到**沙箱内启动**：应用功能会残缺但不报错（bash 开不了 PTY、隔离 worktree 建不起来）。"
   log "   确知后果并要继续：--allow-sandboxed（或 CORUM_ALLOW_SANDBOXED_LAUNCH=1）"
   [[ "${CORUM_ALLOW_SANDBOXED_LAUNCH:-0}" == "1" ]] && return 0
-  return 0
+  return 1
 }
 
 # ── 构建（dev；build_all 口径见 docs/LESSONS.md「只建 5 个 ui 包」那课）─────
@@ -657,7 +657,13 @@ HELPER_JS
   [[ $rc -eq 0 ]] || return $rc
   # 只回传密钥本身：electron 会往 stdout 打杂项（如 "Downloading Electron binary..."），
   # 若原样返回会污染 base64 主密钥并让下游解密失败。
-  printf '%s' "$(printf '%s' "$out" | grep -E '^[A-Za-z0-9+/=]{40,}$' | tail -1)"
+  local key
+  key="$(printf '%s' "$out" | grep -E '^[A-Za-z0-9+/=]{40,}$' | tail -1)"
+  if [[ -z "$key" ]]; then
+    log "❌ 未能从 Electron 输出中提取主密钥（grep 无匹配）"
+    return 1
+  fi
+  printf '%s' "$key"
 }
 
 # 版本无关地定位当前工作区实际安装的 Electron 可执行文件。

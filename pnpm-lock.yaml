@@ -2245,9 +2245,6 @@ importers:
       '@deepseek-ai/dsh-typert-protocol':
         specifier: 0.1.5-rc.3
         version: 0.1.5-rc.3(@deepseek-ai/cordis@4.0.2)
-      clsx:
-        specifier: ^2.1.1
-        version: 2.1.1
       lucide-react:
         specifier: ^0.460.0
         version: 0.460.0(react@18.3.1)

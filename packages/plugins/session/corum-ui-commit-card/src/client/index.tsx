@@ -16,7 +16,7 @@
  * pending.applyUpdate 驱动卡片重渲染三态。
  */
 import type { Context as ClientContext } from '@deepseek-ai/cordis'
-import { useSyncExternalStore } from 'react'
+import { useSyncExternalStore, useCallback } from 'react'
 import type { SessionId } from '@deepseek-ai/dsh-session/types'
 import type { ISessions } from '@deepseek-ai/dsh-api-session-controller/client'
 import type { PendingInteractionPublisher } from '@deepseek-ai/dsh-client-ui-session/client'
@@ -88,21 +88,23 @@ async function showCommitCard(
 }
 
 /** dock 面板：订阅 pendingInteractions，渲染当前会话的提交卡片（若有）。 */
-function CommitCardDock({ sessionId, pendingInteractions }: {
+function CommitCardDock({ sessionId, pendingInteractions, t }: {
   sessionId: SessionId
   pendingInteractions: {
     getSnapshot: () => ReadonlyMap<string, unknown>
     subscribe: (fn: () => void) => () => void
   }
+  t: (key: import('./locales.ts').CommitCardKey) => string
 }) {
-  const pending = useSyncExternalStore(pendingInteractions.subscribe, () => {
+  const getSnapshot = useCallback(() => {
     for (const value of pendingInteractions.getSnapshot().values()) {
       if (value instanceof PendingCommitCard && String(value.sessionId) === String(sessionId)) return value
     }
     return null
-  })
+  }, [pendingInteractions, sessionId])
+  const pending = useSyncExternalStore(pendingInteractions.subscribe, getSnapshot)
   if (pending === null) return null
-  return <CommitCard key={pending.key} pending={pending} />
+  return <CommitCard key={pending.key} pending={pending} t={t} />
 }
 
 /**
@@ -117,12 +119,13 @@ export function apply(ctx: ClientContext): void {
     subscribe: (fn: () => void) => () => void
   }
   ctx.effect(() => ctx.locale.register(NS, { zh, en }), 'corum-ui-commit-card: dictionaries')
+  const t = ctx.locale.bind(NS)
   ctx.slots.inject('conversation.input.dock', () => ctx.slots.register(
     { name: 'conversation.input.dock', id: 'commit-card', order: 0, locale: NS },
     (props: { sessionId?: SessionId }) => (
       props.sessionId === undefined
         ? null
-        : <CommitCardDock sessionId={props.sessionId} pendingInteractions={pendingInteractions} />
+        : <CommitCardDock sessionId={props.sessionId} pendingInteractions={pendingInteractions} t={t} />
     ),
   ))
   // waterfall：host 下发卡片初始载荷。回传立即解析（无按钮）。

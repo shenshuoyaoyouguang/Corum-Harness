@@ -51,6 +51,7 @@ import { existsSync, mkdirSync, writeFileSync, readFileSync, openSync, statSync 
 import { execFileSync, spawn } from 'node:child_process'
 import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { tmpdir, homedir } from 'node:os'
 import { platform, arch } from 'node:process'
 
 const HERE = dirname(fileURLToPath(import.meta.url))
@@ -63,7 +64,7 @@ const AS_JSON = has('--json')
 /** 改为验**打包产物**而非 dev 树（凭证加密判据的发布门禁入口）。 */
 const PACKAGED = has('--packaged')
 const PORT = Number(process.env.CDP_PORT ?? 9333)
-const OUT = process.env.CORUM_SMOKE_OUT ?? '/tmp/corum-smoke'
+const OUT = process.env.CORUM_SMOKE_OUT ?? join(tmpdir(), 'corum-smoke')
 /** 被启动应用的控制台输出落盘位置（启动期判据的证据来源）。 */
 const LAUNCH_LOG = join(OUT, 'launch.log')
 
@@ -116,9 +117,14 @@ function tryExec(cmd, args, opts = {}) {
  * （台账 `tooling.fetch-node-platformized-and-verified-on-linux`）。
  */
 function checkNodeRuntimePlatform() {
-  const bin = join(repoRoot, 'packages/desktop/build/node/bin/node')
+  const bin = join(repoRoot, 'packages/desktop/build/node/bin/node' + (platform === 'win32' ? '.exe' : ''))
   if (!existsSync(bin)) {
     record('fast', 'build/node 运行时存在', 'skip', `未物化：${bin}（先跑 npm run pack:node）`)
+    return
+  }
+  // Windows 无 `file` 命令，跳过二进制格式检查（存在性已验证）。
+  if (platform === 'win32') {
+    record('fast', 'build/node 运行时平台', 'skip', 'Windows 无 file 命令，跳过二进制格式检查')
     return
   }
   const file = tryExec('file', ['-b', bin]) ?? ''
@@ -342,7 +348,7 @@ function checkNativeModules() {
     try {
       const pty = require('node-pty');
       out.pty = new Promise(r => {
-        const p = pty.spawn('/bin/sh', ['-c', 'echo PTY_OK'], { name: 'xterm-color', cols: 80, rows: 24 });
+        const p = pty.spawn(${platform === 'win32' ? "'cmd.exe'" : "'/bin/sh'"}, ${platform === 'win32' ? "['/c', 'echo PTY_OK']" : "['-c', 'echo PTY_OK']"}, { name: 'xterm-color', cols: 80, rows: 24 });
         let buf = '';
         p.onData(d => { buf += d });
         p.onExit(() => r(buf.includes('PTY_OK') ? 'PTY_OK' : 'no-output:' + buf.slice(0,40)));
@@ -371,7 +377,7 @@ function checkPtySpawn() {
   const one = `
     try {
       const pty = require('node-pty');
-      const p = pty.spawn('/bin/sh', ['-c', 'echo PTY_OK'], { name: 'xterm-color', cols: 80, rows: 24 });
+      const p = pty.spawn(${platform === 'win32' ? "'cmd.exe'" : "'/bin/sh'"}, ${platform === 'win32' ? "['/c', 'echo PTY_OK']" : "['-c', 'echo PTY_OK']"}, { name: 'xterm-color', cols: 80, rows: 24 });
       let buf = '';
       p.onData(d => { buf += d });
       p.onExit(() => { console.log(buf.includes('PTY_OK') ? 'PASS' : 'FAIL:' + buf.slice(0,60)); process.exit(0) });
@@ -443,7 +449,7 @@ function checkSandboxEnforcement() {
  * 需要可用的 LLM 凭据；没有就**记 skip 并说明**，绝不假装通过。
  */
 async function checkAgentRound(cdp, sessionId) {
-  const cred = join(process.env.HOME ?? '/root', '.corum', '.credentials.yaml')
+  const cred = join(homedir(), '.corum', '.credentials.yaml')
   const hasCred = existsSync(cred) && readFileSync(cred, 'utf8').trim().length > 0
   if (!hasCred) {
     record('full', 'Agent 真跑一轮 bash', 'skip', `无 LLM 凭据（${cred}）⇒ 需用户提供密钥或授权配置模型后才可判定`)
@@ -507,7 +513,7 @@ function checkCredentialEncryption() {
     return
   }
 
-  const home = process.env.CORUM_HOME ?? join(process.env.HOME ?? '', '.corum')
+  const home = process.env.CORUM_HOME ?? join(homedir(), '.corum')
   const keyFile = join(home, '.master-key')
   const details = []
   let ok = true

@@ -18,7 +18,7 @@ export const linuxPlatform: PlatformModule = {
     pathSep: '/',
   },
   terminalShell(): TerminalShell {
-    return { shell: process.env.SHELL ?? '/bin/zsh', args: ['-l'] }
+    return { shell: (process.env.SHELL && process.env.SHELL.trim()) || '/bin/sh', args: ['-l'] }
   },
   revealCommand(_realPath: string, dirname: string): RevealCommand {
     // Linux 无「揭示选中」的统一接口，xdg-open 所在目录。
